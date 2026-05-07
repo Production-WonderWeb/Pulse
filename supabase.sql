@@ -1,7 +1,7 @@
 -- Supabase Schema Setup
 
 -- Create a table for user profiles
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
   id uuid REFERENCES auth.users NOT NULL PRIMARY KEY,
   email text,
   role text DEFAULT 'Staff',
@@ -14,16 +14,31 @@ CREATE TABLE profiles (
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
 -- Allow anyone to read profiles
-CREATE POLICY "Profiles are viewable by authenticated users."
-  ON profiles FOR SELECT
-  USING ( auth.role() = 'authenticated' );
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Profiles are viewable by authenticated users.' AND tablename = 'profiles') THEN
+        CREATE POLICY "Profiles are viewable by authenticated users."
+          ON profiles FOR SELECT
+          USING ( auth.role() = 'authenticated' );
+    END IF;
+END $$;
 
 -- Allow users to insert their own profile
-CREATE POLICY "Users can insert their own profile."
-  ON profiles FOR INSERT
-  WITH CHECK ( auth.uid() = id );
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can insert their own profile.' AND tablename = 'profiles') THEN
+        CREATE POLICY "Users can insert their own profile."
+          ON profiles FOR INSERT
+          WITH CHECK ( auth.uid() = id );
+    END IF;
+END $$;
 
 -- Allow authenticated users to update profiles (needed for the Admin view role updates)
-CREATE POLICY "Authenticated users can update profiles."
-  ON profiles FOR UPDATE
-  USING ( auth.role() = 'authenticated' );
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Authenticated users can update profiles.' AND tablename = 'profiles') THEN
+        CREATE POLICY "Authenticated users can update profiles."
+          ON profiles FOR UPDATE
+          USING ( auth.role() = 'authenticated' );
+    END IF;
+END $$;
