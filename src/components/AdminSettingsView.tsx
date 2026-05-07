@@ -1,0 +1,141 @@
+
+import React, { useState, useEffect } from 'react';
+import { CalendarConfig, User, UserRole } from '../types';
+import { Trash2, Plus, Shield, User as UserIcon } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+
+interface Props {
+  config: CalendarConfig;
+  onUpdateConfig: (config: CalendarConfig) => void;
+}
+
+export const AdminSettingsView: React.FC<Props> = ({ config, onUpdateConfig }) => {
+  const [newHoliday, setNewHoliday] = useState('');
+  const [users, setUsers] = useState<User[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    if (!supabase || !supabase.from) {
+      setLoadingUsers(false);
+      return;
+    }
+    try {
+      const { data, error } = await supabase.from('profiles').select('*');
+      if (error) throw error;
+      if (data) {
+        setUsers(data.map(p => ({
+          id: p.id,
+          name: p.display_name || p.email.split('@')[0],
+          email: p.email,
+          role: p.role as UserRole,
+          imageUrl: p.avatar_url,
+        })));
+      }
+    } catch (err) {
+      console.error("Error fetching users", err);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const updateUserRole = async (userId: string, newRole: string) => {
+    if (!supabase || !supabase.from) return;
+    try {
+      const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
+      if (error) throw error;
+      alert("User role updated successfully");
+      fetchUsers();
+    } catch (err) {
+      console.error("Error updating user role", err);
+      alert("Failed to update role");
+    }
+  };
+
+  const addHoliday = () => {
+    if (newHoliday && !config.publicHolidays.includes(newHoliday)) {
+      onUpdateConfig({ ...config, publicHolidays: [...config.publicHolidays, newHoliday] });
+      setNewHoliday('');
+    }
+  };
+
+  const removeHoliday = (date: string) => {
+    onUpdateConfig({ ...config, publicHolidays: config.publicHolidays.filter(h => h !== date) });
+  };
+
+  return (
+    <div className="p-6 space-y-8">
+      <div className="space-y-6">
+        <h2 className="text-2xl font-black text-[var(--text-primary)]">User Management</h2>
+        
+        {loadingUsers ? (
+          <p className="text-sm text-[var(--text-secondary)]">Loading users...</p>
+        ) : (
+          <div className="space-y-3">
+            {users.length === 0 ? (
+              <p className="text-sm text-[var(--text-secondary)]">No users found or Supabase not connected.</p>
+            ) : (
+              users.map(u => (
+                <div key={u.id} className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-brand-blue/10 flex items-center justify-center text-brand-blue border border-brand-blue/20 overflow-hidden shrink-0">
+                      {u.imageUrl ? (
+                        <img src={u.imageUrl} alt={u.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <UserIcon size={20} />
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-black text-[var(--text-primary)] leading-none">{u.name}</p>
+                      <p className="text-xs text-[var(--text-secondary)]">{u.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Shield size={16} className="text-[var(--text-secondary)]" />
+                    <select 
+                      value={u.role} 
+                      onChange={(e) => updateUserRole(u.id, e.target.value)}
+                      className="bg-transparent border border-[var(--border-color)] text-xs rounded p-1 outline-none font-bold"
+                    >
+                      <option value="Administrator">Administrator</option>
+                      <option value="Manager">Manager</option>
+                      <option value="Staff">Staff</option>
+                    </select>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-6">
+        <h2 className="text-2xl font-black text-[var(--text-primary)]">Manage Public Holidays</h2>
+        <div className="flex gap-2">
+          <input 
+            type="date"
+            value={newHoliday}
+            onChange={(e) => setNewHoliday(e.target.value)}
+            className="flex-1 p-3 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)]"
+          />
+          <button onClick={addHoliday} className="p-3 bg-brand-blue text-white rounded-xl">
+            <Plus size={20} />
+          </button>
+        </div>
+        <div className="space-y-2">
+          {config.publicHolidays.sort().map(h => (
+            <div key={h} className="flex justify-between items-center p-3 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)]">
+              <span>{h}</span>
+              <button onClick={() => removeHoliday(h)} className="text-red-500">
+                <Trash2 size={18} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};

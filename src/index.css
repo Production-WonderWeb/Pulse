@@ -1,0 +1,52 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-brand-blue: #3b82f6;
+  --color-brand-orange: #f97316;
+  --color-brand-green: #22c55e;
+  --color-brand-grey: #64748b;
+}
+
+@layer base {
+  :root {
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --border-color: #e2e8f0;
+    --accent-color: #3b82f6;
+    --card-bg: #ffffff;
+  }
+
+  .dark {
+    --bg-primary: #0a0a0a;
+    --bg-secondary: #121212;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --border-color: #1f2937;
+    --accent-color: #3b82f6;
+    --card-bg: #18181b;
+  }
+
+  body {
+    @apply bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans antialiased transition-colors duration-300;
+  }
+}
+
+.mobile-h-screen {
+  height: 100vh;
+  height: -webkit-fill-available;
+}
+
+.glass-morphism {
+  @apply bg-[var(--bg-secondary)]/80 backdrop-blur-xl border border-[var(--border-color)];
+}
+
+.card-pulse {
+  @apply bg-[var(--card-bg)] border border-[var(--border-color)] rounded-3xl shadow-sm transition-all;
+}
+

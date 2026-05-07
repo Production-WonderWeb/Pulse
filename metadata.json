@@ -1,0 +1,8 @@
+{
+  "name": "Pulse",
+  "description": "Mobile-first equipment management, project tracking, staff time clock, and administrative dashboard.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}

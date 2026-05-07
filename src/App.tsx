@@ -1,0 +1,2597 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect } from 'react';
+import { supabase } from './lib/supabase';
+import { 
+  LayoutDashboard, 
+  Warehouse, 
+  Briefcase, 
+  Clock, 
+  Calendar, 
+  Settings,
+  Bell,
+  Plus,
+  User as UserIcon,
+  Search,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowRight,
+  LogOut,
+  ChevronRight,
+  ChevronDown,
+  BarChart3,
+  TrendingUp,
+  Wrench,
+  Users,
+  LocateFixed,
+  FileText,
+  Download,
+  Phone,
+  Mail,
+  MapPin,
+  DollarSign,
+  Truck
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell
+} from 'recharts';
+import { X, Trash2, Edit3, Save, Scan, Upload } from 'lucide-react';
+import { GanttChart } from './components/GanttChart';
+import { TimeClockView } from './components/TimeClockView';
+import { AdminSettingsView } from './components/AdminSettingsView';
+import { CalendarView } from './components/CalendarView';
+import { QRCodeScanner, DownloadQRCode } from './components/QRCodeManager';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
+import { format } from 'date-fns';
+import { MaintenanceService } from './services/MaintenanceService';
+import { 
+  MOCK_USERS, 
+  MOCK_EQUIPMENT, 
+  MOCK_PROJECTS, 
+  MOCK_TASKS,
+  MOCK_CLIENTS,
+  MOCK_VENDORS,
+  MOCK_FREELANCERS,
+  MOCK_HIRED_EQUIPMENT
+} from './mockData';
+import { 
+  User, 
+  Equipment, 
+  Project, 
+  MaintenanceTask, 
+  UserRole,
+  Client,
+  Vendor,
+  Freelancer,
+  HiredEquipment,
+  ProjectResourceAssignment,
+  LeaveRequest,
+  AttendanceRecord,
+  CalendarConfig,
+  LeaveType,
+  LeaveStatus
+} from './types/index';
+import { cn, formatDate } from './lib/utils';
+
+// --- Dashboard Charts Data ---
+const USAGE_DATA = [
+  { name: 'Mon', hours: 45 },
+  { name: 'Tue', hours: 52 },
+  { name: 'Wed', hours: 48 },
+  { name: 'Thu', hours: 61 },
+  { name: 'Fri', hours: 55 },
+  { name: 'Sat', hours: 20 },
+  { name: 'Sun', hours: 15 },
+];
+
+const EQUIP_STATUS_DATA = [
+  { name: 'Available', value: 12, color: '#10b981' },
+  { name: 'In Use', value: 8, color: '#3b82f6' },
+  { name: 'Repair', value: 3, color: '#f59e0b' },
+];
+
+const PulseLogo = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 500 500" className={className} xmlns="http://www.w3.org/2000/svg">
+    {/* Abstract representation of the overlapping circles logo */}
+    <circle cx="250" cy="180" r="100" fill="none" stroke="#f97316" strokeWidth="40" opacity="0.8" />
+    <circle cx="320" cy="270" r="100" fill="none" stroke="#3b82f6" strokeWidth="40" opacity="0.8" />
+    <circle cx="180" cy="270" r="100" fill="none" stroke="#22c55e" strokeWidth="40" opacity="0.8" />
+    <path d="M250 190 C 220 160, 180 160, 150 190 C 120 220, 120 280, 250 380 C 380 280, 380 220, 350 190 C 320 160, 280 160, 250 190" fill="none" stroke="#64748b" strokeWidth="15" />
+  </svg>
+);
+
+// --- PDF Export Utility ---
+const generateProjectPDF = async (project: Project, client?: Client, assignments?: ProjectResourceAssignment[], resources?: {
+  users: User[],
+  equipment: Equipment[],
+  freelancers: Freelancer[],
+  hired: any[]
+}) => {
+  const doc = new jsPDF();
+  const primaryColor = '#3b82f6';
+  const secondaryColor = '#6b7280';
+  
+  // Brand Header
+  doc.setFillColor(primaryColor);
+  doc.rect(0, 0, 210, 40, 'F');
+  doc.setTextColor('#ffffff');
+  doc.setFontSize(22);
+  doc.setFont('helvetica', 'bold');
+  doc.text('PROJECT MOBILIZATION BRIEF', 105, 25, { align: 'center' });
+  doc.setFontSize(10);
+  doc.text(`REF: ${project.id} | ${format(new Date(), 'dd MMM yyyy')}`, 105, 32, { align: 'center' });
+
+  // Project Info
+  doc.setTextColor('#1f2937');
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('1. PROJECT SPECIFICATIONS', 15, 55);
+  doc.line(15, 57, 195, 57);
+
+  doc.setFontSize(10);
+  doc.text('PROJECT NAME:', 15, 65);
+  doc.setFont('helvetica', 'normal');
+  doc.text(project.name, 50, 65);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('CLIENT:', 15, 72);
+  doc.setFont('helvetica', 'normal');
+  doc.text(client?.name || 'N/A', 50, 72);
+
+  if (project.clientContactId) {
+    const contact = client?.contacts?.find(c => c.id === project.clientContactId);
+    if (contact) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('CONTACT:', 15, 79);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${contact.name} (${contact.role}) | ${contact.email} | ${contact.phone}`, 50, 79);
+    }
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('CATEGORY:', 15, 86);
+  doc.setFont('helvetica', 'normal');
+  doc.text(project.category, 50, 86);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('LOCATION:', 15, 93);
+  doc.setFont('helvetica', 'normal');
+  doc.text(project.location.address, 50, 93);
+
+  if (project.location.mapLink) {
+    doc.setFont('helvetica', 'bold');
+    doc.text('MAP LINK:', 15, 100);
+    doc.setTextColor(primaryColor);
+    doc.text(project.location.mapLink, 50, 100, { maxWidth: 140 });
+    doc.setTextColor('#1f2937');
+  }
+
+  // Event Timeline
+  let yPos = 115;
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('2. OPERATIONAL TIMELINE', 15, yPos);
+  doc.line(15, yPos + 2, 195, yPos + 2);
+  yPos += 12;
+
+  doc.setFontSize(9);
+  if (project.eventDates && project.eventDates.length > 0) {
+    project.eventDates.forEach((ed) => {
+      if (yPos > 270) { doc.addPage(); yPos = 20; }
+      doc.setFont('helvetica', 'bold');
+      doc.text(ed.label.toUpperCase() || 'PHASE', 15, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${formatDate(ed.date)} | ${ed.startTime} - ${ed.endTime}`, 70, yPos);
+      yPos += 7;
+    });
+  } else {
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${formatDate(project.startDate)} - ${formatDate(project.endDate)}`, 15, yPos);
+    yPos += 7;
+  }
+
+  // Resource Allocation
+  yPos += 10;
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('3. RESOURCE MATRIX', 15, yPos);
+  doc.line(15, yPos + 2, 195, yPos + 2);
+  yPos += 12;
+
+  doc.setFontSize(8);
+  doc.setFillColor(243, 244, 246);
+  doc.rect(15, yPos - 5, 180, 7, 'F');
+  doc.text('RESOURCE', 18, yPos);
+  doc.text('TYPE', 70, yPos);
+  doc.text('DESCRIPTION / ASSIGNMENT', 110, yPos);
+  yPos += 10;
+
+  assignments?.forEach((ass) => {
+    if (yPos > 270) {
+      doc.addPage();
+      yPos = 20;
+    }
+
+    let resourceName = 'Unknown';
+    let detail = '';
+
+    if (ass.resourceType === 'staff') {
+      resourceName = resources?.users.find(u => u.id === ass.resourceId)?.name || 'Staff';
+    } else if (ass.resourceType === 'equipment') {
+      resourceName = resources?.equipment.find(e => e.id === ass.resourceId)?.name || 'Asset';
+    } else if (ass.resourceType === 'freelancer') {
+      resourceName = resources?.freelancers.find(f => f.id === ass.resourceId)?.name || 'Freelancer';
+    } else if (ass.resourceType === 'vendor_service') {
+      const vendor = resources?.hired.find(v => v.id === ass.resourceId);
+      resourceName = vendor?.name || 'Vendor';
+      const service = vendor?.services?.find((s: any) => s.id === ass.serviceId);
+      detail = service ? `${service.name} (${service.type})` : '';
+    }
+
+    const edLabel = ass.dateId ? project.eventDates?.find(d => d.id === ass.dateId)?.label : 'Full Project';
+
+    doc.setFont('helvetica', 'bold');
+    doc.text(resourceName, 18, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text((ass.resourceType || '').split('_').join(' ').toUpperCase(), 70, yPos);
+    doc.text(`${detail ? detail + ' | ' : ''}${edLabel || 'Assigned'}`, 110, yPos);
+    
+    yPos += 7;
+    doc.setDrawColor(243, 244, 246);
+    doc.line(15, yPos - 3, 195, yPos - 3);
+    yPos += 4;
+  });
+
+  // Footer
+  const pageCount = (doc as any).internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(secondaryColor);
+    doc.text(`Generated by Pulse OPS Platform | Page ${i} of ${pageCount}`, 105, 285, { align: 'center' });
+  }
+
+  doc.save(`${project.name.replace(/\s+/g, '_')}_Mobilization_Brief.pdf`);
+};
+
+// --- Sub-components ---
+
+const BottomNav = ({ activeTab, setActiveTab, role }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole }) => {
+  const tabs = [
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Dash', roles: ['Administrator', 'Manager'] as UserRole[] },
+    { id: 'inventory', icon: Warehouse, label: 'Fleet', roles: ['Administrator', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'resources', icon: Users, label: 'CRM', roles: ['Administrator', 'Manager'] as UserRole[] },
+    { id: 'projects', icon: Briefcase, label: 'Projects', roles: ['Administrator', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'timeclock', icon: Clock, label: 'Time', roles: ['Administrator', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'calendar', icon: Calendar, label: 'Cal', roles: ['Administrator', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'admin', icon: Settings, label: 'Admin', roles: ['Administrator'] as UserRole[] },
+  ].filter(t => t.roles.includes(role));
+
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 glass-morphism border-t border-[var(--border-color)] px-2 pb-safe pt-2 z-50">
+      <div className="flex justify-around items-center max-w-lg mx-auto">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            id={`nav-tab-${tab.id}`}
+            className={cn(
+              "flex flex-col items-center gap-1 p-2 transition-colors relative",
+              activeTab === tab.id ? "text-brand-blue" : "text-[var(--text-secondary)]"
+            )}
+          >
+            <tab.icon size={20} />
+            <span className="text-[9px] font-bold uppercase tracking-widest">{tab.label}</span>
+            {activeTab === tab.id && (
+              <motion.div 
+                layoutId="nav-pill"
+                className="absolute -top-1 w-8 h-0.5 bg-brand-blue rounded-full"
+              />
+            )}
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+};
+
+const Header = ({ title, user, setRole, theme, toggleTheme, onLogout, onUpdateUser }: { title: string, user: User, setRole: (r: UserRole) => void, theme: 'light' | 'dark', toggleTheme: () => void, onLogout?: () => void, onUpdateUser?: (updated: User) => void }) => {
+  const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
+
+  return (
+    <header className="sticky top-0 z-40 glass-morphism px-4 py-4 flex justify-between items-center border-b border-[var(--border-color)]">
+      <div className="flex items-center gap-3">
+        <div 
+          onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
+          className="w-10 h-10 rounded-xl bg-[var(--bg-secondary)] flex items-center justify-center text-brand-orange border border-[var(--border-color)] shadow-sm cursor-pointer overflow-hidden"
+        >
+          {user.imageUrl ? (
+            <img src={user.imageUrl} alt={user.name} className="w-full h-full object-cover" />
+          ) : (
+            <PulseLogo className="w-full h-full p-1" />
+          )}
+        </div>
+        <div>
+          <h1 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-tighter leading-none">{title}</h1>
+          <p className="text-[9px] text-brand-green font-bold uppercase tracking-widest mt-1">{user.role}</p>
+        </div>
+      </div>
+      
+      <div className="flex items-center gap-2">
+        {onLogout && (
+          <button 
+            onClick={onLogout}
+            className="p-2 bg-[var(--bg-secondary)] rounded-xl text-red-500 border border-[var(--border-color)] hover:bg-red-500/10"
+            aria-label="Logout"
+          >
+            <LogOut size={18} />
+          </button>
+        )}
+        <button 
+          onClick={toggleTheme}
+          className="p-2 bg-[var(--bg-secondary)] rounded-xl text-[var(--text-secondary)] border border-[var(--border-color)]"
+          aria-label="Toggle Theme"
+        >
+          <Settings size={18} />
+        </button>
+        <button 
+          className="p-2 bg-[var(--bg-secondary)] rounded-xl text-[var(--text-secondary)] relative border border-[var(--border-color)]"
+          aria-label="Notifications"
+        >
+          <Bell size={18} />
+          <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-brand-orange rounded-full"></span>
+        </button>
+      </div>
+
+      {showRoleSwitcher && (
+        <div className="absolute top-16 left-4 bg-[var(--bg-secondary)] shadow-2xl border border-[var(--border-color)] rounded-2xl p-2 z-50 w-64 space-y-2">
+          <div className="p-2 border-b border-[var(--border-color)]">
+             <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest block mb-1">Display Image (URL)</label>
+             <input 
+               type="text"
+               value={user.imageUrl || ''}
+               onChange={(e) => {
+                  if (onUpdateUser) {
+                    onUpdateUser({ ...user, imageUrl: e.target.value });
+                  }
+               }}
+               className="w-full bg-transparent border border-[var(--border-color)] rounded px-2 py-1 text-xs outline-none focus:border-brand-blue"
+               placeholder="https://example.com/me.png"
+             />
+          </div>
+          <p className="text-[9px] font-black text-[var(--text-secondary)] px-3 py-2 uppercase tracking-widest">Admin Access Only</p>
+          {(['Administrator', 'Manager', 'Staff'] as UserRole[]).map(r => (
+            <button 
+              key={r}
+              onClick={() => { setRole(r); setShowRoleSwitcher(false); }}
+              className={cn(
+                "w-full text-left px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors",
+                user.role === r ? "bg-brand-blue text-white" : "hover:bg-[var(--bg-primary)] text-[var(--text-secondary)]"
+              )}
+            >
+              Simulate {r} View
+            </button>
+          ))}
+        </div>
+      )}
+    </header>
+  );
+};
+
+// --- Resources View for Backend Data ---
+const ResourcesView = ({ 
+  clients, 
+  vendors, 
+  freelancers,
+  onAddClient,
+  onUpdateClient,
+  onDeleteClient,
+  onAddVendor,
+  onUpdateVendor,
+  onDeleteVendor,
+  onAddFreelancer,
+  onUpdateFreelancer,
+  onDeleteFreelancer
+}: { 
+  clients: Client[], 
+  vendors: Vendor[], 
+  freelancers: Freelancer[],
+  onAddClient: (c: Omit<Client, 'id'>) => void,
+  onUpdateClient: (c: Client) => void,
+  onDeleteClient: (id: string) => void,
+  onAddVendor: (v: Omit<Vendor, 'id'>) => void,
+  onUpdateVendor: (v: Vendor) => void,
+  onDeleteVendor: (id: string) => void,
+  onAddFreelancer: (f: Omit<Freelancer, 'id'>) => void,
+  onUpdateFreelancer: (f: Freelancer) => void,
+  onDeleteFreelancer: (id: string) => void
+}) => {
+  const [activeSubTab, setActiveSubTab] = useState<'clients' | 'vendors' | 'freelancers'>('clients');
+  const [search, setSearch] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
+
+  const [clientForm, setClientForm] = useState<Omit<Client, 'id'>>({ 
+    name: '', 
+    contacts: [{ id: '1', name: '', role: '', email: '', phone: '' }], 
+    createdAt: new Date().toISOString() 
+  });
+  const [vendorForm, setVendorForm] = useState<Omit<Vendor, 'id'>>({ 
+    name: '', 
+    contacts: [{ id: '1', name: '', role: '', email: '', phone: '' }], 
+    services: [{ id: '1', name: '', type: 'Service', description: '' }] 
+  });
+  const [freelancerForm, setFreelancerForm] = useState<Omit<Freelancer, 'id'>>({ name: '', role: '', email: '', phone: '', dailyRate: 0, notes: '', contactDetails: '' });
+
+  const filteredItems = (() => {
+    const s = search.toLowerCase();
+    if (activeSubTab === 'clients') return clients.filter(c => c.name.toLowerCase().includes(s) || (c.contacts || []).some(ct => ct.name.toLowerCase().includes(s)));
+    if (activeSubTab === 'vendors') return vendors.filter(v => v.name.toLowerCase().includes(s) || (v.contacts || []).some(ct => ct.name.toLowerCase().includes(s)));
+    return freelancers.filter(f => f.name.toLowerCase().includes(s) || f.role.toLowerCase().includes(s));
+  })();
+
+  const handleEdit = (item: any) => {
+    setEditingItem(item);
+    if (activeSubTab === 'clients') setClientForm({ ...item });
+    if (activeSubTab === 'vendors') setVendorForm({ ...item });
+    if (activeSubTab === 'freelancers') setFreelancerForm({ ...item, dailyRate: Number(item.dailyRate) });
+    setIsModalOpen(true);
+  };
+
+  const resetForms = () => {
+    setEditingItem(null);
+    setClientForm({ name: '', contacts: [{ id: '1', name: '', role: '', email: '', phone: '' }], createdAt: new Date().toISOString() });
+    setVendorForm({ name: '', contacts: [{ id: '1', name: '', role: '', email: '', phone: '' }], services: [{ id: '1', name: '', type: 'Service', description: '' }] });
+    setFreelancerForm({ name: '', role: '', email: '', phone: '', dailyRate: 0, notes: '', contactDetails: '' });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (activeSubTab === 'clients') {
+      editingItem ? onUpdateClient({ ...clientForm, id: editingItem.id } as Client) : onAddClient(clientForm);
+    } else if (activeSubTab === 'vendors') {
+      editingItem ? onUpdateVendor({ ...vendorForm, id: editingItem.id } as Vendor) : onAddVendor(vendorForm);
+    } else {
+      editingItem ? onUpdateFreelancer({ ...freelancerForm, id: editingItem.id } as Freelancer) : onAddFreelancer(freelancerForm);
+    }
+    setIsModalOpen(false);
+    resetForms();
+  };
+
+  const handleDelete = (id: string) => {
+    if (window.confirm('Delete this record?')) {
+      if (activeSubTab === 'clients') onDeleteClient(id);
+      if (activeSubTab === 'vendors') onDeleteVendor(id);
+      if (activeSubTab === 'freelancers') onDeleteFreelancer(id);
+    }
+  };
+
+  const renderCard = (item: any) => {
+    const isClient = activeSubTab === 'clients';
+    const isVendor = activeSubTab === 'vendors';
+    const isFreelancer = activeSubTab === 'freelancers';
+
+    return (
+      <div 
+        key={item.id}
+        className="bg-[var(--bg-secondary)] p-5 rounded-3xl border border-[var(--border-color)] space-y-4"
+      >
+        <div className="flex justify-between items-start">
+          <div className="flex gap-4">
+            <div className="w-10 h-10 rounded-2xl bg-[var(--bg-primary)] flex items-center justify-center text-brand-blue border border-[var(--border-color)]">
+              {isClient ? <UserIcon size={18} /> : isVendor ? <Truck size={18} /> : <Users size={18} />}
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-tight">{item.name}</h3>
+              <p className="text-[9px] text-[var(--text-secondary)] font-black uppercase tracking-widest">
+                {isClient ? `${(item.contacts || []).length} Contacts` : isVendor ? `${(item.contacts || []).length} Contacts | ${(item.services || []).length} Services` : item.role}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => handleEdit(item)}
+              className="p-2 text-[var(--text-secondary)] hover:text-brand-blue transition-colors"
+            >
+              <Edit3 size={16} />
+            </button>
+            <button 
+              onClick={() => handleDelete(item.id)}
+              className="p-2 text-[var(--text-secondary)] hover:text-red-500 transition-colors"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </div>
+
+        {!isFreelancer && (
+          <div className="space-y-3">
+            {(item.contacts || []).slice(0, 1).map((ct: any) => (
+              <div key={ct.id} className="grid grid-cols-2 gap-4">
+                <div className="flex items-center gap-2">
+                  <Mail size={12} className="text-brand-grey" />
+                  <span className="text-[10px] text-[var(--text-secondary)] truncate">{ct.email}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Phone size={12} className="text-brand-grey" />
+                  <span className="text-[10px] text-[var(--text-secondary)]">{ct.phone}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {isFreelancer && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex items-center gap-2">
+              <Mail size={12} className="text-brand-grey" />
+              <span className="text-[10px] text-[var(--text-secondary)] truncate">{item.email}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Phone size={12} className="text-brand-grey" />
+              <span className="text-[10px] text-[var(--text-secondary)]">{item.phone}</span>
+            </div>
+          </div>
+        )}
+
+        {isFreelancer && (
+          <div className="pt-3 border-t border-[var(--border-color)]/50 flex justify-between items-center">
+            <span className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Daily Rate</span>
+            <span className="text-xs font-black text-brand-green">AED {item.dailyRate}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
+      <div className="flex flex-col gap-4">
+        <div className="flex gap-2 p-1 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] sticky top-0 z-10 shadow-sm">
+          {(['clients', 'vendors', 'freelancers'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => { setActiveSubTab(tab); setSearch(''); }}
+              className={cn(
+                "flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all",
+                activeSubTab === tab ? "bg-brand-blue text-white shadow-lg shadow-brand-blue/20" : "text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]"
+              )}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-3">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-4 top-3 text-[var(--text-secondary)]" />
+            <input 
+              type="text" 
+              placeholder={`SEARCH ${activeSubTab.toUpperCase()}...`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors text-[var(--text-primary)]"
+            />
+          </div>
+          <button 
+            onClick={() => { resetForms(); setIsModalOpen(true); }}
+            className="bg-brand-blue text-white px-4 rounded-2xl shadow-xl shadow-brand-blue/10 flex items-center justify-center"
+          >
+            <Plus size={20} />
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <AnimatePresence mode="popLayout">
+          {filteredItems.map(item => (
+            <motion.div
+              key={item.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              layout
+            >
+              {renderCard(item)}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
+      <Modal 
+        isOpen={isModalOpen} 
+        onClose={() => { setIsModalOpen(false); resetForms(); }}
+        title={`${editingItem ? 'Update' : 'Add'} ${(activeSubTab || '').slice(0, -1)}`}
+      >
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-1.5">
+            <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Company/Full Name</label>
+            <input 
+              required
+              value={activeSubTab === 'clients' ? clientForm.name : activeSubTab === 'vendors' ? vendorForm.name : freelancerForm.name}
+              onChange={(e) => {
+                if (activeSubTab === 'clients') setClientForm({...clientForm, name: e.target.value});
+                if (activeSubTab === 'vendors') setVendorForm({...vendorForm, name: e.target.value});
+                if (activeSubTab === 'freelancers') setFreelancerForm({...freelancerForm, name: e.target.value});
+              }}
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
+              placeholder="Name"
+            />
+          </div>
+
+          {(activeSubTab === 'clients' || activeSubTab === 'vendors') && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center px-1">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-brand-blue">Contacts</h4>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    const newContact = { id: Math.random().toString(), name: '', role: '', email: '', phone: '' };
+                    if (activeSubTab === 'clients') setClientForm({...clientForm, contacts: [...clientForm.contacts, newContact]});
+                    else setVendorForm({...vendorForm, contacts: [...vendorForm.contacts, newContact]});
+                  }}
+                  className="p-1 bg-brand-blue/10 text-brand-blue rounded-lg hover:bg-brand-blue/20"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                {((activeSubTab === 'clients' ? clientForm.contacts : vendorForm.contacts) || []).map((contact, idx) => (
+                  <div key={contact.id} className="p-4 bg-[var(--bg-primary)] rounded-2xl border border-[var(--border-color)] space-y-3 relative">
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const currentContacts = (activeSubTab === 'clients' ? clientForm.contacts : vendorForm.contacts) || [];
+                        const newList = currentContacts.filter((_, i) => i !== idx);
+                        if (activeSubTab === 'clients') setClientForm({...clientForm, contacts: newList});
+                        else setVendorForm({...vendorForm, contacts: newList});
+                      }}
+                      className="absolute top-2 right-2 text-red-500 p-1"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input 
+                        required
+                        placeholder="Name"
+                        value={contact.name}
+                        onChange={(e) => {
+                          const newList = [...(activeSubTab === 'clients' ? clientForm.contacts : vendorForm.contacts)];
+                          newList[idx].name = e.target.value;
+                          if (activeSubTab === 'clients') setClientForm({...clientForm, contacts: newList});
+                          else setVendorForm({...vendorForm, contacts: newList});
+                        }}
+                        className="bg-transparent border-b border-[var(--border-color)] py-1 text-xs focus:border-brand-blue outline-none"
+                      />
+                      <input 
+                        required
+                        placeholder="Role"
+                        value={contact.role}
+                        onChange={(e) => {
+                          const newList = [...(activeSubTab === 'clients' ? clientForm.contacts : vendorForm.contacts)];
+                          newList[idx].role = e.target.value;
+                          if (activeSubTab === 'clients') setClientForm({...clientForm, contacts: newList});
+                          else setVendorForm({...vendorForm, contacts: newList});
+                        }}
+                        className="bg-transparent border-b border-[var(--border-color)] py-1 text-xs focus:border-brand-blue outline-none"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input 
+                        required
+                        type="email"
+                        placeholder="Email"
+                        value={contact.email}
+                        onChange={(e) => {
+                          const newList = [...(activeSubTab === 'clients' ? clientForm.contacts : vendorForm.contacts)];
+                          newList[idx].email = e.target.value;
+                          if (activeSubTab === 'clients') setClientForm({...clientForm, contacts: newList});
+                          else setVendorForm({...vendorForm, contacts: newList});
+                        }}
+                        className="bg-transparent border-b border-[var(--border-color)] py-1 text-xs focus:border-brand-blue outline-none"
+                      />
+                      <input 
+                        required
+                        placeholder="Phone"
+                        value={contact.phone}
+                        onChange={(e) => {
+                          const newList = [...(activeSubTab === 'clients' ? clientForm.contacts : vendorForm.contacts)];
+                          newList[idx].phone = e.target.value;
+                          if (activeSubTab === 'clients') setClientForm({...clientForm, contacts: newList});
+                          else setVendorForm({...vendorForm, contacts: newList});
+                        }}
+                        className="bg-transparent border-b border-[var(--border-color)] py-1 text-xs focus:border-brand-blue outline-none"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeSubTab === 'vendors' && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center px-1">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-brand-blue">Offerings (Service/Equipment)</h4>
+                <button 
+                  type="button"
+                  onClick={() => setVendorForm({...vendorForm, services: [...vendorForm.services, { id: Math.random().toString(), name: '', type: 'Service' }]})}
+                  className="p-1 bg-brand-blue/10 text-brand-blue rounded-lg hover:bg-brand-blue/20"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+              <div className="space-y-2">
+                {(vendorForm.services || []).map((service, idx) => (
+                  <div key={service.id} className="flex gap-2 items-center">
+                    <select 
+                      value={service.type}
+                      onChange={(e) => {
+                        const newList = [...vendorForm.services];
+                        newList[idx].type = e.target.value as any;
+                        setVendorForm({...vendorForm, services: newList});
+                      }}
+                      className="bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-2 py-2 text-[10px] outline-none"
+                    >
+                      <option value="Service">SVC</option>
+                      <option value="Equipment">EQ</option>
+                    </select>
+                    <input 
+                      required
+                      placeholder="e.g. Crane Rental"
+                      value={service.name}
+                      onChange={(e) => {
+                        const newList = [...vendorForm.services];
+                        newList[idx].name = e.target.value;
+                        setVendorForm({...vendorForm, services: newList});
+                      }}
+                      className="flex-1 bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs focus:border-brand-blue outline-none"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setVendorForm({...vendorForm, services: (vendorForm.services || []).filter((_, i) => i !== idx)})}
+                      className="text-red-500"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeSubTab === 'freelancers' && (
+             <>
+               <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Role</label>
+                  <input 
+                    required
+                    value={freelancerForm.role}
+                    onChange={(e) => setFreelancerForm({...freelancerForm, role: e.target.value})}
+                    className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
+                    placeholder="Stage Tech"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Daily Rate (AED)</label>
+                  <input 
+                    required
+                    type="number"
+                    value={freelancerForm.dailyRate}
+                    onChange={(e) => setFreelancerForm({...freelancerForm, dailyRate: Number(e.target.value)})}
+                    className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue font-mono"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Email</label>
+                  <input required type="email" value={freelancerForm.email} onChange={(e) => setFreelancerForm({...freelancerForm, email: e.target.value})} className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Phone</label>
+                  <input required type="tel" value={freelancerForm.phone} onChange={(e) => setFreelancerForm({...freelancerForm, phone: e.target.value})} className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs" />
+                </div>
+              </div>
+             </>
+          )}
+
+          <button 
+            type="submit"
+            className="w-full bg-brand-blue text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-brand-blue/20 hover:scale-[1.02] transition-all mt-4"
+          >
+            {editingItem ? 'Execute Update' : 'Initialize Record'}
+          </button>
+        </form>
+      </Modal>
+    </div>
+  );
+};
+
+// --- View Components ---
+
+const ProjectsView = ({ 
+  role, 
+  projects, 
+  clients,
+  users,
+  equipment,
+  vendors,
+  freelancers,
+  assignments,
+  onUpdateAssignments,
+  onAdd, 
+  onUpdate, 
+  onDelete 
+}: { 
+  role: UserRole, 
+  projects: Project[],
+  clients: Client[],
+  users: User[],
+  equipment: Equipment[],
+  vendors: Vendor[],
+  freelancers: Freelancer[],
+  assignments: ProjectResourceAssignment[],
+  onUpdateAssignments: (a: ProjectResourceAssignment[]) => void,
+  onAdd: (p: Omit<Project, 'id'>) => void,
+  onUpdate: (p: Project) => void,
+  onDelete: (id: string) => void
+}) => {
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<Project['status'] | 'all'>('all');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+
+  const [formData, setFormData] = useState<Omit<Project, 'id' | 'tasks'>>({
+    name: '',
+    clientId: '',
+    clientContactId: '',
+    category: '',
+    description: '',
+    location: { address: '', mapLink: '' },
+    status: 'planning',
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
+    eventDates: [{ id: '1', label: 'Main Event', date: new Date().toISOString().split('T')[0], startTime: '09:00', endTime: '18:00' }],
+    timingNotes: '',
+    assignedStaff: [],
+    imageUrl: ''
+  });
+
+  const [projectAssignments, setProjectAssignments] = useState<Omit<ProjectResourceAssignment, 'id' | 'projectId'>[]>([]);
+
+  const filteredProjects = projects.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
+      clients.find(c => c.id === p.clientId)?.name.toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const handleExportPDF = (project: Project) => {
+    const client = clients.find(c => c.id === project.clientId);
+    const projAssignments = assignments.filter(a => a.projectId === project.id);
+    generateProjectPDF(project, client, projAssignments, {
+      users,
+      equipment,
+      freelancers,
+      hired: vendors
+    });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const projectId = editingProject ? editingProject.id : `PRJ-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    
+    // Calculate min/max dates from eventDates for summary
+    const dates = (formData.eventDates || []).map(d => d.date).filter(Boolean);
+    const sortedDates = dates.sort();
+    const startDate = sortedDates[0] || formData.startDate;
+    const endDate = sortedDates[sortedDates.length - 1] || formData.endDate;
+
+    const newProject: Project = { 
+      ...formData, 
+      startDate,
+      endDate,
+      id: projectId 
+    } as Project;
+
+    if (editingProject) {
+      onUpdate(newProject);
+    } else {
+      onAdd(newProject);
+    }
+
+    // Update global assignments
+    const otherAssignments = assignments.filter(a => a.projectId !== projectId);
+    const updatedProjectAssignments: ProjectResourceAssignment[] = (projectAssignments || []).map(pa => ({
+      ...pa,
+      id: `ass-${Math.random().toString(36).substring(2, 6)}`,
+      projectId,
+      startDate: pa.startDate || startDate,
+      startTime: pa.startTime || '00:00',
+      endTime: pa.endTime || '00:00'
+    }));
+    onUpdateAssignments([...otherAssignments, ...updatedProjectAssignments]);
+
+    setIsModalOpen(false);
+    resetForm();
+  };
+
+  const handleEdit = (project: Project) => {
+    setEditingProject(project);
+    setFormData({
+      name: project.name,
+      clientId: project.clientId,
+      clientContactId: project.clientContactId || '',
+      category: project.category,
+      description: project.description || '',
+      location: { ...project.location },
+      status: project.status,
+      startDate: project.startDate,
+      endDate: project.endDate,
+      eventDates: (project.eventDates && project.eventDates.length > 0) ? [...project.eventDates] : [{ id: '1', label: 'Main Event', date: project.startDate, startTime: '09:00', endTime: '18:00' }],
+      timingNotes: project.timingNotes || '',
+      assignedStaff: [...(project.assignedStaff || [])],
+      imageUrl: project.imageUrl || ''
+    });
+    setProjectAssignments(assignments.filter(a => a.projectId === project.id).map(({id, projectId, ...rest}) => rest));
+    setIsModalOpen(true);
+  };
+
+  const resetForm = () => {
+    setEditingProject(null);
+    setFormData({
+      name: '',
+      clientId: '',
+      clientContactId: '',
+      category: '',
+      description: '',
+      location: { address: '', mapLink: '' },
+      status: 'planning',
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: new Date().toISOString().split('T')[0],
+      eventDates: [{ id: '1', label: 'Main Event', date: new Date().toISOString().split('T')[0], startTime: '09:00', endTime: '18:00' }],
+      timingNotes: '',
+      assignedStaff: [],
+      imageUrl: ''
+    });
+    setProjectAssignments([]);
+  };
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleExportCSV = () => {
+    const headers = ['id', 'name', 'clientId', 'clientContactId', 'category', 'status', 'startDate', 'endDate', 'description', 'imageUrl'];
+    const csvContent = [
+      headers.join(','),
+      ...projects.map(p => headers.map(h => `"${(p as any)[h] || ''}"`).join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `projects_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      const lines = text.split('\n');
+      const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+      
+      const newItems = lines.slice(1).filter(line => line.trim() !== '').map(line => {
+        const values = line.split(',').map(v => v.replace(/^"|"$/g, '').trim());
+        const item: any = {};
+        headers.forEach((h, i) => {
+          item[h] = values[i];
+        });
+        return item as Project;
+      });
+
+      newItems.forEach(item => {
+        if (item.id && projects.some(p => p.id === item.id)) {
+          onUpdate(item);
+        } else {
+          const { id, ...rest } = item;
+          // default missing info
+          rest.location = rest.location || { address: '', mapLink: '' };
+          onAdd(rest);
+        }
+      });
+      alert(`Imported ${newItems.length} projects successfully.`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
+
+  const selectedClient = clients.find(c => c.id === formData.clientId);
+
+  return (
+    <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
+      <div className="flex flex-col gap-4">
+        <div className="flex gap-3">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-4 top-3 text-[var(--text-secondary)]" />
+            <input 
+              type="text" 
+              placeholder="SEARCH PROJECTS OR CLIENTS..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors text-[var(--text-primary)]"
+            />
+          </div>
+          {(role === 'Administrator' || role === 'Manager') && (
+            <>
+              <button 
+                onClick={handleExportCSV}
+                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
+                title="Export CSV"
+              >
+                <Download size={20} />
+              </button>
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
+                title="Import CSV"
+              >
+                <Upload size={20} />
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleImportCSV} 
+                accept=".csv" 
+                className="hidden" 
+              />
+              <button 
+                onClick={() => { resetForm(); setIsModalOpen(true); }}
+                className="bg-brand-blue text-white px-4 rounded-2xl shadow-xl shadow-brand-blue/10 flex items-center justify-center"
+              >
+                <Plus size={20} />
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {(['all', 'planning', 'active', 'on-hold', 'completed'] as const).map(status => (
+            <button
+              key={status}
+              onClick={() => setStatusFilter(status)}
+              className={cn(
+                "px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all whitespace-nowrap",
+                statusFilter === status 
+                  ? "bg-brand-blue text-white border-brand-blue shadow-lg shadow-brand-blue/20" 
+                  : "bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border-color)] hover:border-brand-blue/30"
+              )}
+            >
+              {status}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-4">
+          {filteredProjects.map(project => {
+            const client = clients.find(c => c.id === project.clientId);
+            const contact = client?.contacts?.find(ct => ct.id === project.clientContactId);
+            const projAssignments = assignments.filter(a => a.projectId === project.id);
+            
+            return (
+              <div 
+                key={project.id}
+                className="bg-[var(--bg-secondary)] rounded-3xl border border-[var(--border-color)] overflow-hidden shadow-sm"
+              >
+                <div className="p-5 space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div className="flex gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-brand-blue/10 flex items-center justify-center text-brand-blue border border-brand-blue/20 overflow-hidden shrink-0">
+                        {project.imageUrl ? (
+                          <img src={project.imageUrl} alt={project.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <Briefcase size={20} />
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-tight">{project.name}</h3>
+                        <p className="text-[9px] text-brand-blue font-black uppercase tracking-widest">
+                          {client?.name} {contact ? `(${contact.name})` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <div className={cn(
+                      "px-2 py-0.5 text-[8px] font-black rounded border uppercase tracking-widest",
+                      project.status === 'active' ? "bg-brand-green/10 text-brand-green border-brand-green/20" : 
+                      project.status === 'planning' ? "bg-brand-orange/10 text-brand-orange border-brand-orange/20" : 
+                      "bg-brand-grey/10 text-brand-grey border-brand-grey/20"
+                    )}>
+                      {project.status}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 py-3 border-y border-[var(--border-color)]/30">
+                    <div className="flex items-center gap-2">
+                      <MapPin size={10} className="text-brand-grey" />
+                      <span className="text-[9px] font-bold text-[var(--text-secondary)] truncate uppercase">{project.location.address}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {(project.eventDates || []).map(ed => (
+                        <div key={ed.id} className="flex items-center gap-1.5 bg-[var(--bg-primary)] px-2 py-1 rounded-lg border border-[var(--border-color)]/50">
+                          <Calendar size={10} className="text-brand-orange" />
+                          <span className="text-[8px] font-black text-[var(--text-primary)] uppercase">
+                            {ed.label}: {formatDate(ed.date)} ({ed.startTime}-{ed.endTime})
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                       <div className="flex -space-x-2">
+                        {(project.assignedStaff || []).slice(0, 3).map(id => (
+                          <div key={id} className="w-6 h-6 rounded-full bg-[var(--bg-primary)] border-2 border-[var(--bg-secondary)] flex items-center justify-center text-[7px] font-black text-[var(--text-secondary)]">
+                            {users.find(u => u.id === id)?.name.charAt(0)}
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[8px] font-black text-brand-grey uppercase tracking-widest">
+                        {projAssignments.length} assigned units
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleExportPDF(project)}
+                        className="p-1.5 bg-[var(--bg-primary)] rounded-xl text-brand-blue border border-[var(--border-color)]"
+                      >
+                        <Download size={14} />
+                      </button>
+                      {(role === 'Administrator' || role === 'Manager') && (
+                        <>
+                          <button 
+                            onClick={() => handleEdit(project)}
+                            className="p-1.5 bg-[var(--bg-primary)] rounded-xl text-[var(--text-secondary)] border border-[var(--border-color)]"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          <button 
+                            onClick={() => onDelete(project.id)}
+                            className="p-1.5 bg-[var(--bg-primary)] rounded-xl text-red-500 border border-[var(--border-color)]"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {project.tasks && project.tasks.length > 0 && (
+                    <div className="pt-4 border-t border-[var(--border-color)]/30">
+                      <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-2">Project Timeline</p>
+                      <GanttChart tasks={project.tasks} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+      </div>
+
+      <Modal 
+        isOpen={isModalOpen} 
+        onClose={() => { setIsModalOpen(false); resetForm(); }}
+        title={editingProject ? "Update Project Master" : "Initialize Project"}
+      >
+        <form onSubmit={handleSubmit} className="max-h-[70vh] overflow-y-auto pr-2 space-y-8 scrollbar-hide">
+          <section className="space-y-4">
+             <div className="flex items-center gap-2 text-brand-blue">
+               <FileText size={16} />
+               <h4 className="text-[10px] font-black uppercase tracking-[0.2em]">Project Identity</h4>
+             </div>
+             <div className="space-y-4 p-4 bg-[var(--bg-primary)] rounded-3xl border border-[var(--border-color)]">
+               <div>
+                 <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Project Name</label>
+                 <input 
+                   required
+                   value={formData.name}
+                   onChange={(e) => setFormData({...formData, name: e.target.value})}
+                   className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-blue"
+                   placeholder="Event Title"
+                 />
+               </div>
+               <div className="grid grid-cols-2 gap-4">
+                 <div>
+                   <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Client</label>
+                   <select 
+                     required
+                     value={formData.clientId}
+                     onChange={(e) => setFormData({...formData, clientId: e.target.value, clientContactId: ''})}
+                     className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none"
+                   >
+                     <option value="">Select Client</option>
+                     {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                   </select>
+                 </div>
+                 <div>
+                   <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Contact Person</label>
+                   <select 
+                     value={formData.clientContactId}
+                     onChange={(e) => setFormData({...formData, clientContactId: e.target.value})}
+                     className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none"
+                     disabled={!formData.clientId}
+                   >
+                     <option value="">Select Contact</option>
+                     {selectedClient?.contacts?.map(ct => <option key={ct.id} value={ct.id}>{ct.name} ({ct.role})</option>)}
+                   </select>
+                 </div>
+               </div>
+               <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Status</label>
+                    <select 
+                      value={formData.status}
+                      onChange={(e) => setFormData({...formData, status: e.target.value as any})}
+                      className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none"
+                    >
+                      <option value="planning">Planning</option>
+                      <option value="active">Active</option>
+                      <option value="on-hold">On Hold</option>
+                      <option value="completed">Completed</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Category</label>
+                    <input 
+                      required
+                      value={formData.category}
+                      onChange={(e) => setFormData({...formData, category: e.target.value})}
+                      className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none"
+                      placeholder="e.g. Civil"
+                    />
+                  </div>
+               </div>
+               <div>
+                 <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Logo / Image URL</label>
+                 <div className="flex gap-2 items-center">
+                   <input 
+                     value={formData.imageUrl || ''}
+                     onChange={(e) => setFormData({...formData, imageUrl: e.target.value})}
+                     className="flex-1 bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none"
+                     placeholder="https://example.com/logo.png"
+                   />
+                   <input 
+                     type="file"
+                     accept="image/*"
+                     id="projectImageUpload"
+                     className="hidden"
+                     onChange={(e) => {
+                       const file = e.target.files?.[0];
+                       if (file) {
+                         const reader = new FileReader();
+                         reader.onloadend = () => {
+                           setFormData({...formData, imageUrl: reader.result as string});
+                         };
+                         reader.readAsDataURL(file);
+                       }
+                     }}
+                   />
+                   <label 
+                     htmlFor="projectImageUpload"
+                     className="px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl text-xs cursor-pointer hover:border-brand-blue"
+                   >
+                     Upload
+                   </label>
+                 </div>
+               </div>
+               <div className="space-y-3">
+                  <div>
+                    <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Site Address</label>
+                    <input 
+                      required
+                      value={formData.location.address}
+                      onChange={(e) => setFormData({...formData, location: { ...formData.location, address: e.target.value }})}
+                      className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none"
+                      placeholder="Full Address"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Map Link</label>
+                    <input 
+                      value={formData.location.mapLink}
+                      onChange={(e) => setFormData({...formData, location: { ...formData.location, mapLink: e.target.value }})}
+                      className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none"
+                      placeholder="Google Maps URL"
+                    />
+                  </div>
+               </div>
+             </div>
+          </section>
+
+          <section className="space-y-4">
+             <div className="flex justify-between items-center px-1">
+               <div className="flex items-center gap-2 text-brand-orange">
+                 <Calendar size={16} />
+                 <h4 className="text-[10px] font-black uppercase tracking-[0.2em]">Project Schedule</h4>
+               </div>
+               <button 
+                 type="button"
+                 onClick={() => setFormData({...formData, eventDates: [...formData.eventDates, { id: Math.random().toString(), label: '', date: '', startTime: '', endTime: '' }]})}
+                 className="p-1 px-2 bg-brand-orange/10 text-brand-orange rounded-lg text-[8px] font-black uppercase tracking-widest"
+               >
+                 + Add Date
+               </button>
+             </div>
+             <div className="space-y-3">
+                {(formData.eventDates || []).map((ed, idx) => (
+                  <div key={ed.id} className="p-4 bg-[var(--bg-primary)] rounded-2xl border border-[var(--border-color)] space-y-3 relative">
+                    {(formData.eventDates || []).length > 1 && (
+                      <button type="button" onClick={() => setFormData({...formData, eventDates: (formData.eventDates || []).filter((_, i) => i !== idx)})} className="absolute top-2 right-2 text-red-500">
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                    <input 
+                      required
+                      placeholder="DATE LABEL (E.G. TECHNICAL REHEARSAL)"
+                      value={ed.label}
+                      onChange={(e) => {
+                        const newList = [...formData.eventDates];
+                        newList[idx].label = e.target.value;
+                        setFormData({...formData, eventDates: newList});
+                      }}
+                      className="w-full bg-transparent border-b border-[var(--border-color)] py-1 text-[9px] font-black uppercase tracking-widest outline-none focus:border-brand-orange"
+                    />
+                    <div className="grid grid-cols-3 gap-2">
+                       <input 
+                        required type="date" value={ed.date}
+                        className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg p-1.5 text-[10px] outline-none"
+                        onChange={(e) => {
+                          const newList = [...formData.eventDates];
+                          newList[idx].date = e.target.value;
+                          setFormData({...formData, eventDates: newList});
+                        }}
+                       />
+                       <input 
+                        required type="time" value={ed.startTime}
+                        className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg p-1.5 text-[10px] outline-none"
+                        onChange={(e) => {
+                          const newList = [...formData.eventDates];
+                          newList[idx].startTime = e.target.value;
+                          setFormData({...formData, eventDates: newList});
+                        }}
+                       />
+                       <input 
+                        required type="time" value={ed.endTime}
+                        className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg p-1.5 text-[10px] outline-none"
+                        onChange={(e) => {
+                          const newList = [...formData.eventDates];
+                          newList[idx].endTime = e.target.value;
+                          setFormData({...formData, eventDates: newList});
+                        }}
+                       />
+                    </div>
+                  </div>
+                ))}
+             </div>
+          </section>
+
+          <section className="space-y-4">
+             <div className="flex justify-between items-center px-1">
+               <div className="flex items-center gap-2 text-brand-green">
+                 <Users size={16} />
+                 <h4 className="text-[10px] font-black uppercase tracking-[0.2em]">Resource Matrix</h4>
+               </div>
+               <div className="flex gap-2">
+                 <button 
+                   type="button"
+                   onClick={() => setProjectAssignments([...projectAssignments, { resourceId: '', resourceType: 'staff' }])}
+                   className="p-1 px-2 bg-brand-green/10 text-brand-green rounded-lg text-[8px] font-black uppercase tracking-widest"
+                 >
+                   + Resource
+                 </button>
+               </div>
+             </div>
+             
+             <div className="space-y-3">
+                {(projectAssignments || []).map((ass, idx) => (
+                  <div key={idx} className="flex gap-2 items-start p-3 bg-[var(--bg-primary)] rounded-xl border border-[var(--border-color)]">
+                    <div className="flex-1 space-y-2">
+                      <div className="flex gap-2">
+                        <select 
+                          value={ass.resourceType}
+                          onChange={(e) => {
+                            const newList = [...projectAssignments];
+                            newList[idx].resourceType = e.target.value as any;
+                            newList[idx].resourceId = '';
+                            newList[idx].serviceId = undefined;
+                            setProjectAssignments(newList);
+                          }}
+                          className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg px-2 py-1 text-[9px] outline-none"
+                        >
+                          <option value="staff">STAFF</option>
+                          <option value="equipment">FLEET</option>
+                          <option value="vendor_service">VENDOR</option>
+                          <option value="freelancer">FREE</option>
+                        </select>
+                        <select 
+                          required
+                          value={ass.resourceId}
+                          onChange={(e) => {
+                            const newList = [...projectAssignments];
+                            newList[idx].resourceId = e.target.value;
+                            newList[idx].serviceId = undefined;
+                            setProjectAssignments(newList);
+                          }}
+                          className="flex-1 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg px-2 py-1 text-[10px] outline-none"
+                        >
+                          <option value="">Select Resource</option>
+                          {ass.resourceType === 'staff' && users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          {ass.resourceType === 'equipment' && equipment.map(e => <option key={e.id} value={e.id}>{e.name} ({e.status})</option>)}
+                          {ass.resourceType === 'vendor_service' && vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                          {ass.resourceType === 'freelancer' && freelancers.map(f => <option key={f.id} value={f.id}>{f.name} ({f.role})</option>)}
+                        </select>
+                      </div>
+
+                      {ass.resourceType === 'vendor_service' && ass.resourceId && (
+                        <select 
+                          required
+                          value={ass.serviceId || ''}
+                          onChange={(e) => {
+                            const newList = [...projectAssignments];
+                            newList[idx].serviceId = e.target.value;
+                            setProjectAssignments(newList);
+                          }}
+                          className="w-full bg-[var(--bg-secondary)] border border-brand-green/30 rounded-lg px-2 py-1 text-[10px] outline-none"
+                        >
+                          <option value="">Select Service/Equipment</option>
+                          {(vendors.find(v => v.id === ass.resourceId)?.services || []).map(s => (
+                            <option key={s.id} value={s.id}>{s.name} ({s.type})</option>
+                          ))}
+                        </select>
+                      )}
+
+                      <select 
+                        value={ass.dateId || ''}
+                        onChange={(e) => {
+                          const newList = [...projectAssignments];
+                          newList[idx].dateId = e.target.value || undefined;
+                          setProjectAssignments(newList);
+                        }}
+                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg px-2 py-1 text-[9px] outline-none"
+                      >
+                         <option value="">All Project Dates</option>
+                         {formData.eventDates.map(ed => <option key={ed.id} value={ed.id}>{ed.label} ({ed.date})</option>)}
+                      </select>
+                    </div>
+                    <button type="button" onClick={() => setProjectAssignments((projectAssignments || []).filter((_, i) => i !== idx))} className="text-red-500 mt-2">
+                       <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+             </div>
+          </section>
+
+          <button 
+            type="submit"
+            className="w-full bg-brand-blue text-white py-5 rounded-[2.5rem] font-black text-[12px] uppercase tracking-[0.2em] shadow-2xl shadow-brand-blue/30 hover:scale-[1.02] active:scale-95 transition-all mt-8 sticky bottom-0"
+          >
+            {editingProject ? 'Execute Update' : 'Finalize Initialization'}
+          </button>
+        </form>
+      </Modal>
+    </div>
+  );
+};
+
+const CalendarOldView = () => {
+  const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  
+  return (
+    <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
+      <div className="bg-[var(--bg-secondary)] rounded-3xl p-6 border border-[var(--border-color)] shadow-2xl">
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-lg font-black text-[var(--text-primary)] uppercase tracking-tighter">May 2026</h2>
+          <div className="flex gap-2">
+            <button className="w-9 h-9 rounded-xl border border-[var(--border-color)] flex items-center justify-center text-[var(--text-secondary)] hover:text-brand-blue transition-colors">
+              <ChevronRight size={18} className="rotate-180" />
+            </button>
+            <button className="w-9 h-9 rounded-xl border border-[var(--border-color)] flex items-center justify-center text-[var(--text-secondary)] hover:text-brand-blue transition-colors">
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+        
+        <div className="flex justify-around items-center">
+          {days.map((day, i) => (
+            <div key={day} className="flex flex-col items-center gap-3">
+              <span className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest">{day}</span>
+              <div className={cn(
+                "w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black transition-all",
+                i === 2 ? "bg-brand-blue text-white shadow-lg" : "text-[var(--text-secondary)] hover:bg-[var(--bg-primary)]"
+              )}>
+                {4 + i}
+              </div>
+              {i === 2 && <div className="w-1.5 h-1.5 bg-brand-orange rounded-full" />}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <h3 className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-[0.2em] pl-2">Timeline Summary</h3>
+        
+        <div className="space-y-3">
+          <div className="bg-[var(--bg-secondary)] p-5 rounded-3xl border-l-[6px] border-l-brand-orange border border-[var(--border-color)] shadow-sm flex items-center gap-5">
+            <div className="text-center min-w-[55px] border-r border-[var(--border-color)] pr-5">
+              <p className="text-base font-black text-[var(--text-primary)] font-mono leading-none">09:00</p>
+              <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase tracking-widest mt-1">am_sync</p>
+            </div>
+            <div className="flex-1">
+              <p className="text-xs font-black text-[var(--text-primary)] uppercase tracking-tight truncate">Maintenance Cycle</p>
+              <p className="text-[10px] text-brand-grey font-bold uppercase tracking-widest truncate">EXCAVATOR-X • ST-B</p>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-[var(--bg-primary)] flex items-center justify-center text-brand-orange border border-[var(--border-color)]">
+              <Wrench size={18} />
+            </div>
+          </div>
+
+          <div className="bg-[var(--bg-secondary)] p-5 rounded-3xl border-l-[6px] border-l-brand-grey border border-[var(--border-color)] shadow-sm flex items-center gap-5 opacity-60">
+            <div className="text-center min-w-[55px] border-r border-[var(--border-color)] pr-5">
+              <p className="text-base font-black text-[var(--text-primary)] font-mono leading-none">11:30</p>
+              <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase tracking-widest mt-1">pm_site</p>
+            </div>
+            <div className="flex-1">
+              <p className="text-xs font-black text-[var(--text-primary)] uppercase tracking-tight truncate">Site Inspection</p>
+              <p className="text-[10px] text-brand-grey font-bold uppercase tracking-widest truncate">BRIDGE_OPS • CNTR</p>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-[var(--bg-primary)] flex items-center justify-center text-brand-grey border border-[var(--border-color)]">
+              <Search size={18} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const DashboardView = ({ statusData, projects, clients }: { statusData: typeof EQUIP_STATUS_DATA, projects: Project[], clients: Client[] }) => {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  return (
+    <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
+      {/* Welcome Section */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-lg font-black text-[var(--text-primary)] uppercase tracking-tighter">Command Center</h2>
+          <p className="text-[9px] text-[var(--text-secondary)] font-bold uppercase tracking-widest">Fleet Status • {new Date().toLocaleDateString()}</p>
+        </div>
+        <div className="bg-brand-green/10 text-brand-green px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-brand-green/20 items-center flex gap-1">
+          <TrendingUp size={10} />
+          Optimized
+        </div>
+      </div>
+
+      {/* Main Stats */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-brand-blue p-5 rounded-3xl text-white shadow-2xl shadow-brand-blue/20">
+          <Clock size={20} className="mb-2 opacity-60" />
+          <p className="text-[9px] uppercase font-black opacity-60 tracking-widest">Personnel Live</p>
+          <p className="text-3xl font-black tracking-tighter mt-1">12<span className="text-base font-bold opacity-40 ml-1">/ 24</span></p>
+        </div>
+        <div className="bg-[var(--bg-secondary)] p-5 rounded-3xl border border-[var(--border-color)] shadow-sm">
+          <AlertTriangle size={20} className="mb-2 text-brand-orange" />
+          <p className="text-[9px] uppercase font-black text-[var(--text-secondary)] tracking-widest">Critical Alert</p>
+          <p className="text-3xl font-black text-[var(--text-primary)] tracking-tighter mt-1">03<span className="text-base font-bold text-[var(--text-secondary)] ml-1">prio</span></p>
+        </div>
+      </div>
+
+      {/* Charts Section */}
+      <div className="space-y-4">
+        <div className="bg-[var(--bg-secondary)] p-5 rounded-3xl border border-[var(--border-color)] shadow-sm">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-[10px] font-black text-brand-blue uppercase tracking-widest">Fleet Utilization</h3>
+            <BarChart3 size={14} className="text-[var(--text-secondary)]" />
+          </div>
+          <div className="h-44 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={USAGE_DATA}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+                <XAxis dataKey="name" fontSize={9} axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontWeight: 600 }} />
+                <YAxis hide />
+                <Tooltip 
+                  cursor={{ fill: 'rgba(59, 130, 246, 0.1)' }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      return (
+                        <div className="bg-brand-blue text-white px-2 py-1 rounded text-[10px] font-black uppercase">
+                          {payload[0].value} HRS
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Bar dataKey="hours" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-[var(--bg-secondary)] p-5 rounded-3xl border border-[var(--border-color)] shadow-sm flex items-center justify-between">
+          <div className="flex-1">
+            <h3 className="text-[10px] font-black text-brand-green uppercase tracking-widest mb-4">Inventory Health</h3>
+            <div className="space-y-2">
+              {statusData.map((item) => (
+                <div key={item.name} className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+                  <span className="text-[9px] font-bold text-[var(--text-secondary)] uppercase flex-1">{item.name}</span>
+                  <span className="text-[9px] font-black text-[var(--text-primary)]">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="w-32 h-32">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={statusData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={30}
+                  outerRadius={50}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {statusData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Active Projects List */}
+      <div className="pb-8">
+        <div className="flex justify-between items-end mb-4">
+          <h2 className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest pl-1">Operational Progress</h2>
+          <button className="text-[9px] text-brand-blue font-bold uppercase tracking-widest">Open Ops</button>
+        </div>
+        <div className="space-y-3">
+          {projects.map(project => (
+            <div key={project.id} className="bg-[var(--bg-secondary)] p-5 rounded-3xl border border-[var(--border-color)] shadow-sm cursor-pointer" onClick={() => setExpandedId(expandedId === project.id ? null : project.id)}>
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <p className="text-sm font-black text-[var(--text-primary)] uppercase tracking-tight">{project.name}</p>
+                  <p className="text-[9px] text-[var(--text-secondary)] font-black uppercase tracking-widest">{clients.find(c => c.id === project.clientId)?.name || 'N/A'}</p>
+                </div>
+                <div className="flex items-center gap-2">
+			   <div className="w-8 h-8 rounded-full bg-brand-green/10 flex items-center justify-center text-brand-green border border-brand-green/20">
+                     <CheckCircle2 size={16} />
+                   </div>
+                   <div className="text-[var(--text-secondary)]">
+                      {expandedId === project.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                   </div>
+                </div>
+              </div>
+              <div className="h-1 bg-[var(--border-color)] rounded-full overflow-hidden">
+                <div className="h-full bg-brand-blue w-3/4" />
+              </div>
+              <div className="flex justify-between mt-3">
+                <span className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest">EST COMP: OCT 26</span>
+                <span className="text-[9px] font-black text-[var(--text-primary)] tracking-widest underline underline-offset-4 decoration-brand-blue/50">LIVE METRICS</span>
+              </div>
+              <AnimatePresence>
+                {expandedId === project.id && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pt-4 mt-4 border-t border-[var(--border-color)]">
+                      <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase mb-2">Task Timeline</p>
+                      <GanttChart tasks={project.tasks || []} />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+      />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        className="relative bg-[var(--bg-secondary)] w-full max-w-sm rounded-[32px] overflow-hidden border border-[var(--border-color)] shadow-2xl"
+      >
+        <div className="px-6 py-5 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-primary)]/50">
+          <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-tighter">{title}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-[var(--bg-primary)] rounded-full transition-colors text-[var(--text-secondary)]">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="p-6">
+          {children}
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const CATEGORY_MAP: Record<string, string[]> = {
+  'Machinery': ['Excavators', 'Cranes', 'Bulldozers', 'Loaders'],
+  'Heavy Machinery': ['Excavators', 'Cranes', 'Bulldozers', 'Loaders'],
+  'Power Tools': ['Drills', 'Saws', 'Generators', 'Compressors'],
+  'Vehicles': ['Trucks', 'Vans', 'Cars'],
+  'Other': ['General', 'Safety', 'Misc']
+};
+
+const InventoryView = ({ 
+  role, 
+  equipment, 
+  maintenanceTasks,
+  assignments,
+  onAdd, 
+  onUpdate, 
+  onDelete,
+  onAddMaintenanceTask,
+  onUpdateMaintenanceTask
+}: { 
+  role: UserRole, 
+  equipment: Equipment[], 
+  maintenanceTasks: MaintenanceTask[],
+  assignments: ProjectResourceAssignment[],
+  onAdd: (e: Omit<Equipment, 'id'>) => void,
+  onUpdate: (e: Equipment) => void,
+  onDelete: (id: string) => void,
+  onAddMaintenanceTask: (t: MaintenanceTask) => void,
+  onUpdateMaintenanceTask: (t: MaintenanceTask) => void
+}) => {
+  const [search, setSearch] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [editingItem, setEditingItem] = useState<Equipment | null>(null);
+  const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
+  const [filter, setFilter] = useState('');
+  const [isSchedulingMaintenance, setIsSchedulingMaintenance] = useState(false);
+  const [maintenanceForm, setMaintenanceForm] = useState<Partial<MaintenanceTask>>({
+    title: '',
+    description: '',
+    dueDate: new Date().toISOString().split('T')[0],
+    isRecurring: false,
+    frequencyDays: 30
+  });
+  const [formData, setFormData] = useState<Omit<Equipment, 'id'>>({
+    name: '',
+    category: '',
+    subCategory: '',
+    serialNumber: '',
+    status: 'Available',
+    purchaseDate: new Date().toISOString().split('T')[0],
+    imageUrl: ''
+  });
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleScheduleMaintenance = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEquipment) return;
+    onAddMaintenanceTask({
+      id: `mt-${Date.now()}`,
+      equipmentId: selectedEquipment.id,
+      title: maintenanceForm.title || 'Maintenance',
+      description: maintenanceForm.description || '',
+      dueDate: maintenanceForm.dueDate || new Date().toISOString().split('T')[0],
+      status: 'pending',
+      isRecurring: maintenanceForm.isRecurring || false,
+      frequencyDays: maintenanceForm.isRecurring ? maintenanceForm.frequencyDays : undefined
+    });
+    setIsSchedulingMaintenance(false);
+    setMaintenanceForm({
+      title: '',
+      description: '',
+      dueDate: new Date().toISOString().split('T')[0],
+      isRecurring: false,
+      frequencyDays: 30
+    });
+  };
+
+  const handleCompleteTask = (task: MaintenanceTask) => {
+    onUpdateMaintenanceTask({ ...task, status: 'completed' });
+    if (task.isRecurring && selectedEquipment) {
+      const nextTask = MaintenanceService.generateNextTask(selectedEquipment, task);
+      if (nextTask) {
+        onAddMaintenanceTask({ ...nextTask, id: `mt-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` });
+      }
+    }
+  };
+
+  const handleExportCSV = () => {
+    const headers = ['id', 'name', 'category', 'subCategory', 'serialNumber', 'status', 'purchaseDate', 'imageUrl'];
+    const csvContent = [
+      headers.join(','),
+      ...equipment.map(e => headers.map(h => `"${(e as any)[h] || ''}"`).join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `equipment_inventory_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      const lines = text.split('\n');
+      const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+      
+      const newItems = lines.slice(1).filter(line => line.trim() !== '').map(line => {
+        const values = line.split(',').map(v => v.replace(/^"|"$/g, '').trim());
+        const item: any = {};
+        headers.forEach((h, i) => {
+          item[h] = values[i];
+        });
+        return item as Equipment;
+      });
+
+      newItems.forEach(item => {
+        if (item.id && equipment.some(e => e.id === item.id)) {
+          onUpdate(item);
+        } else {
+          const { id, ...rest } = item;
+          onAdd(rest);
+        }
+      });
+      alert(`Imported ${newItems.length} items successfully.`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
+
+  const filteredEquipment = equipment.filter(item => 
+    item.name.toLowerCase().includes(search.toLowerCase()) ||
+    item.category.toLowerCase().includes(search.toLowerCase()) ||
+    (item.subCategory && item.subCategory.toLowerCase().includes(search.toLowerCase())) ||
+    item.serialNumber.toLowerCase().includes(search.toLowerCase())
+  ).filter(item => item.name.toLowerCase().includes(filter.toLowerCase()));
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingItem) {
+      onUpdate({ ...formData, id: editingItem.id } as Equipment);
+    } else {
+      onAdd(formData);
+    }
+    setIsModalOpen(false);
+    resetForm();
+  };
+
+  const resetForm = () => {
+    setEditingItem(null);
+    setFormData({
+      name: '',
+      category: '',
+      subCategory: '',
+      serialNumber: '',
+      status: 'Available',
+      purchaseDate: new Date().toISOString().split('T')[0],
+      imageUrl: ''
+    });
+  };
+
+  const handleEdit = (item: Equipment) => {
+    setEditingItem(item);
+    setFormData({
+      name: item.name,
+      category: item.category,
+      subCategory: item.subCategory || '',
+      serialNumber: item.serialNumber,
+      status: item.status,
+      purchaseDate: item.purchaseDate,
+      imageUrl: item.imageUrl || ''
+    });
+    setIsModalOpen(true);
+  };
+
+  return (
+    <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
+      <div className="flex gap-3">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-4 top-3 text-[var(--text-secondary)]" />
+          <input 
+            type="text" 
+            placeholder="FILTER ASSETS..." 
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors text-[var(--text-primary)]"
+          />
+        </div>
+        <button 
+          onClick={() => setIsScanning(true)}
+          className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
+        >
+          <Scan size={20} />
+        </button>
+        {(role === 'Administrator' || role === 'Manager') && (
+          <>
+            <button 
+              onClick={handleExportCSV}
+              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
+              title="Export CSV"
+            >
+              <Download size={20} />
+            </button>
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
+              title="Import CSV"
+            >
+              <Upload size={20} />
+            </button>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleImportCSV} 
+              accept=".csv" 
+              className="hidden" 
+            />
+            <button 
+              onClick={() => { resetForm(); setIsModalOpen(true); }}
+              className="bg-brand-blue text-white px-4 rounded-2xl shadow-xl shadow-brand-blue/10"
+            >
+              <Plus size={20} />
+            </button>
+          </>
+        )}
+      </div>
+
+<AnimatePresence>
+          {filteredEquipment.length > 0 ? filteredEquipment.map(item => (
+            <motion.div 
+              key={item.id}
+              layout
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              onClick={() => setSelectedEquipment(item)}
+              className="bg-[var(--bg-secondary)] p-4 rounded-3xl border border-[var(--border-color)] flex items-center justify-between cursor-pointer hover:border-brand-blue transition-colors"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-[var(--bg-primary)] flex items-center justify-center text-brand-blue border border-[var(--border-color)] shadow-inner overflow-hidden">
+                    <img 
+                      src={item.imageUrl || `https://picsum.photos/seed/${item.id}/100/100`} 
+                      alt={item.name} 
+                      referrerPolicy="no-referrer" 
+                      className="w-full h-full object-cover" 
+                    />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-tight">{item.name}</h3>
+                    <p className="text-[9px] text-[var(--text-secondary)] font-black uppercase tracking-widest">{item.category}{item.subCategory ? ` / ${item.subCategory}` : ''}</p>
+                  </div>
+                </div>
+                <div className={cn(
+                  "px-2 py-1 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] text-[9px] font-black uppercase tracking-widest",
+                  item.status === 'Available' ? "text-brand-green" : 
+                  item.status === 'In Use' ? "text-brand-blue" : "text-brand-orange"
+                )}>
+                  {item.status}
+                </div>
+              </div>
+
+
+
+              <div className="pt-4 border-t border-[var(--border-color)]/50 flex justify-between items-center">
+                <button className="text-[10px] font-black text-brand-blue uppercase tracking-widest flex items-center gap-1.5 group">
+                  FLIGHT LOGS <ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
+                </button>
+                {(role === 'Administrator' || role === 'Manager') && (
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleEdit(item)}
+                      className="p-2 text-[var(--text-secondary)] hover:text-brand-blue transition-colors"
+                    >
+                      <Edit3 size={16} />
+                    </button>
+                    <button 
+                      onClick={() => onDelete(item.id)}
+                      className="p-2 text-[var(--text-secondary)] hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )) : (
+            <div className="text-center py-20 bg-[var(--bg-secondary)] rounded-3xl border border-dashed border-[var(--border-color)]">
+              <Warehouse size={40} className="mx-auto text-[var(--text-secondary)] opacity-20 mb-4" />
+              <p className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-[0.2em]">Zero Assets Detected</p>
+            </div>
+          )}
+        </AnimatePresence>
+      <Modal 
+        isOpen={!!selectedEquipment}
+        onClose={() => setSelectedEquipment(null)}
+        title={selectedEquipment?.name || ''}
+      >
+        {selectedEquipment && (
+          <div className="space-y-6">
+            <div className="flex flex-col items-center border-b border-[var(--border-color)] pb-4 space-y-4">
+              <div className="w-32 h-32 rounded-3xl bg-[var(--bg-primary)] overflow-hidden border border-[var(--border-color)] shadow-inner">
+                <img 
+                  src={selectedEquipment.imageUrl || `https://picsum.photos/seed/${selectedEquipment.id}/200/200`} 
+                  alt={selectedEquipment.name} 
+                  referrerPolicy="no-referrer" 
+                  className="w-full h-full object-cover" 
+                />
+              </div>
+              <DownloadQRCode data={selectedEquipment.id} name={selectedEquipment.name} />
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="p-4 bg-[var(--bg-primary)] rounded-xl border border-[var(--border-color)]">
+                <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase">Category</p>
+                <p className="font-bold">{selectedEquipment.category}{selectedEquipment.subCategory ? ` / ${selectedEquipment.subCategory}` : ''}</p>
+              </div>
+              <div className="p-4 bg-[var(--bg-primary)] rounded-xl border border-[var(--border-color)]">
+                <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase">Serial</p>
+                <p className="font-bold font-mono">{selectedEquipment.serialNumber}</p>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <h4 className="text-[10px] font-black uppercase text-[var(--text-secondary)] tracking-widest">Maintenance Schedule</h4>
+                {role !== 'Staff' && (
+                  <button 
+                    onClick={() => setIsSchedulingMaintenance(!isSchedulingMaintenance)}
+                    className="text-[10px] font-black text-brand-blue uppercase tracking-widest hover:opacity-80"
+                  >
+                    {isSchedulingMaintenance ? 'Cancel' : '+ Schedule'}
+                  </button>
+                )}
+              </div>
+              
+              {isSchedulingMaintenance && (
+                <form onSubmit={handleScheduleMaintenance} className="p-4 bg-[var(--bg-primary)] rounded-xl border border-[var(--border-color)] space-y-4 mb-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Task Title</label>
+                    <input 
+                      required
+                      value={maintenanceForm.title}
+                      onChange={(e) => setMaintenanceForm({...maintenanceForm, title: e.target.value})}
+                      className="w-full bg-transparent border-b border-[var(--border-color)] py-1 text-xs outline-none focus:border-brand-blue"
+                      placeholder="e.g. Oil Change"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-xs">
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Due Date</label>
+                      <input 
+                        type="date"
+                        required
+                        value={maintenanceForm.dueDate}
+                        onChange={(e) => setMaintenanceForm({...maintenanceForm, dueDate: e.target.value})}
+                        className="w-full bg-transparent border-b border-[var(--border-color)] py-1 outline-none focus:border-brand-blue"
+                      />
+                    </div>
+                    <div className="flex items-end pb-1 gap-2">
+                       <input 
+                         type="checkbox"
+                         id="isRecurring"
+                         checked={maintenanceForm.isRecurring}
+                         onChange={(e) => setMaintenanceForm({...maintenanceForm, isRecurring: e.target.checked})}
+                       />
+                       <label htmlFor="isRecurring" className="text-[10px] font-bold text-[var(--text-primary)]">Recurring?</label>
+                    </div>
+                  </div>
+                  {maintenanceForm.isRecurring && (
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Frequency (Days)</label>
+                      <input 
+                        type="number"
+                        min="1"
+                        required
+                        value={maintenanceForm.frequencyDays}
+                        onChange={(e) => setMaintenanceForm({...maintenanceForm, frequencyDays: parseInt(e.target.value)})}
+                        className="w-full bg-transparent border-b border-[var(--border-color)] py-1 text-xs outline-none focus:border-brand-blue"
+                      />
+                    </div>
+                  )}
+                  <button type="submit" className="w-full bg-brand-blue text-white font-bold py-2 rounded-xl text-xs hover:opacity-90">
+                    Save Task
+                  </button>
+                </form>
+              )}
+
+              {maintenanceTasks.filter(t => t.equipmentId === selectedEquipment.id).length > 0 ? (
+                maintenanceTasks.filter(t => t.equipmentId === selectedEquipment.id)
+                  .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+                  .map(t => {
+                  const taskStatusItem = MaintenanceService.getTaskStatus(t.dueDate);
+                  const displayStatus = t.status === 'completed' ? 'completed' : taskStatusItem;
+                  return (
+                    <div key={t.id} className="p-3 bg-[var(--bg-primary)] rounded-lg flex justify-between items-center text-xs border border-[var(--border-color)]">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold">{t.title}</span>
+                          {t.isRecurring && <span className="text-[8px] bg-brand-blue/10 text-brand-blue px-1.5 py-0.5 rounded uppercase font-black">Recurring</span>}
+                        </div>
+                        <span className="text-[10px] text-[var(--text-secondary)] block mt-0.5">Due: {t.dueDate}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={cn(
+                          "px-2 py-0.5 rounded text-[8px] font-black uppercase", 
+                          displayStatus === 'completed' ? 'bg-brand-green/10 text-brand-green' : 
+                          displayStatus === 'overdue' ? 'bg-red-500/10 text-red-500' :
+                          displayStatus === 'due' ? 'bg-brand-orange/10 text-brand-orange' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
+                        )}>{displayStatus}</span>
+                        {displayStatus !== 'completed' && role !== 'Staff' && (
+                          <button 
+                            onClick={() => handleCompleteTask(t)}
+                            className="bg-brand-green/20 text-brand-green p-1.5 rounded hover:bg-brand-green hover:text-white transition-colors"
+                            title="Mark Completed"
+                          >
+                            <Save size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+              ) : <p className="text-xs text-[var(--text-secondary)]">No records found</p>}
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="text-[10px] font-black uppercase text-[var(--text-secondary)] tracking-widest">Rentals / Assignments</h4>
+              {assignments.filter(a => a.resourceId === selectedEquipment.id && a.resourceType === 'equipment').length > 0 ? (
+                assignments.filter(a => a.resourceId === selectedEquipment.id && a.resourceType === 'equipment').map(a => (
+                  <div key={a.id} className="p-3 bg-[var(--bg-primary)] rounded-lg text-xs">
+                    Assignment: Project {a.projectId}
+                  </div>
+                ))
+              ) : <p className="text-xs text-[var(--text-secondary)]">No active assignments</p>}
+            </div>
+          </div>
+        )}
+      </Modal>
+      
+      <Modal 
+        isOpen={isModalOpen} 
+        onClose={() => { setIsModalOpen(false); resetForm(); }}
+        title={editingItem ? "Edit Asset" : "Register Asset"}
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Asset Name</label>
+            <input 
+              required
+              value={formData.name}
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
+              placeholder="e.g. Excavator Model X"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Image URL (Optional)</label>
+            <input 
+              value={formData.imageUrl || ''}
+              onChange={(e) => setFormData({...formData, imageUrl: e.target.value})}
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
+              placeholder="https://example.com/image.jpg"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Category</label>
+              <input 
+                required
+                list="category-options"
+                value={formData.category}
+                onChange={(e) => setFormData({...formData, category: e.target.value})}
+                className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
+                placeholder="e.g. Machinery"
+              />
+              <datalist id="category-options">
+                {Array.from(new Set([
+                  ...Object.keys(CATEGORY_MAP),
+                  ...equipment.map(e => e.category).filter(Boolean)
+                ])).map(cat => (
+                  <option key={cat} value={cat} />
+                ))}
+              </datalist>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Subcategory</label>
+              <input 
+                list="subcategory-options"
+                value={formData.subCategory || ''}
+                onChange={(e) => setFormData({...formData, subCategory: e.target.value})}
+                className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
+                placeholder="e.g. Excavators"
+              />
+              <datalist id="subcategory-options">
+                {Array.from(new Set([
+                  ...(CATEGORY_MAP[formData.category] || []),
+                  ...equipment.filter(e => e.category === formData.category).map(e => e.subCategory).filter(Boolean)
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ])).map((sub: any) => (
+                  <option key={sub} value={sub} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Serial</label>
+              <input 
+                required
+                value={formData.serialNumber}
+                onChange={(e) => setFormData({...formData, serialNumber: e.target.value})}
+                className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue font-mono"
+                placeholder="SN-0000"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Status</label>
+            <select 
+              value={formData.status}
+              onChange={(e) => setFormData({...formData, status: e.target.value as any})}
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue appearance-none"
+            >
+              <option value="Available">Available</option>
+              <option value="In Use">In Use</option>
+              <option value="Under Maintenance">Under Maintenance</option>
+            </select>
+          </div>
+          <button 
+            type="submit"
+            className="w-full bg-brand-blue text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-brand-blue/20 hover:scale-[1.02] transition-all mt-4"
+          >
+            {editingItem ? "Update Asset" : "Authorize Asset"}
+          </button>
+        </form>
+      </Modal>
+
+      {isScanning && (
+        <QRCodeScanner 
+          onScan={(data) => {
+            if (data) {
+              const item = equipment.find(e => e.id === data || e.serialNumber === data);
+              if (item) {
+                setSelectedEquipment(item);
+              } else {
+                alert('Equipment not found from QR code');
+              }
+              setIsScanning(false);
+            }
+          }}
+          onClose={() => setIsScanning(false)}
+        />
+      )}
+    </div>
+  );
+};
+
+
+
+// --- Main App Component ---
+
+export default function App({ initialUser, onLogout }: { initialUser?: User, onLogout?: () => void }) {
+  const [user, setUser] = useState<User>(initialUser || MOCK_USERS[0]); // Use initialUser or default
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('pulse_active_tab') || 'dashboard');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('pulse_theme') as 'light' | 'dark') || 'dark');
+
+  
+  // -- Extended State for Project Management with Persistence --
+  const [equipment, setEquipment] = useState<Equipment[]>(() => {
+    try {
+      const saved = localStorage.getItem('pulse_equipment');
+      return saved ? JSON.parse(saved) || MOCK_EQUIPMENT : MOCK_EQUIPMENT;
+    } catch { return MOCK_EQUIPMENT; }
+  });
+  const [projects, setProjects] = useState<Project[]>(() => {
+    try {
+      const saved = localStorage.getItem('pulse_projects');
+      return saved ? JSON.parse(saved) || MOCK_PROJECTS : MOCK_PROJECTS;
+    } catch { return MOCK_PROJECTS; }
+  });
+  const [clients, setClients] = useState<Client[]>(() => {
+    try {
+      const saved = localStorage.getItem('pulse_clients');
+      return saved ? JSON.parse(saved) || MOCK_CLIENTS : MOCK_CLIENTS;
+    } catch { return MOCK_CLIENTS; }
+  });
+  const [vendors, setVendors] = useState<Vendor[]>(() => {
+    try {
+      const saved = localStorage.getItem('pulse_vendors');
+      return saved ? JSON.parse(saved) || MOCK_VENDORS : MOCK_VENDORS;
+    } catch { return MOCK_VENDORS; }
+  });
+  const [freelancers, setFreelancers] = useState<Freelancer[]>(() => {
+    try {
+      const saved = localStorage.getItem('pulse_freelancers');
+      return saved ? JSON.parse(saved) || MOCK_FREELANCERS : MOCK_FREELANCERS;
+    } catch { return MOCK_FREELANCERS; }
+  });
+  const [hiredEquipment, setHiredEquipment] = useState<HiredEquipment[]>(() => {
+    try {
+      const saved = localStorage.getItem('pulse_hired_equipment');
+      return saved ? JSON.parse(saved) || MOCK_HIRED_EQUIPMENT : MOCK_HIRED_EQUIPMENT;
+    } catch { return MOCK_HIRED_EQUIPMENT; }
+  });
+
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceTask[]>(() => {
+    try {
+      const saved = localStorage.getItem('pulse_maintenance_tasks');
+      return saved ? JSON.parse(saved) || MOCK_TASKS : MOCK_TASKS;
+    } catch { return MOCK_TASKS; }
+  });
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [calendarConfig, setCalendarConfig] = useState<CalendarConfig>(() => {
+    try {
+      const saved = localStorage.getItem('pulse_calendar_config');
+      return saved ? JSON.parse(saved) : { workingWeekends: [6, 7], publicHolidays: [] };
+    } catch { return { workingWeekends: [6, 7], publicHolidays: [] }; }
+  });
+  const [assignments, setAssignments] = useState<ProjectResourceAssignment[]>(() => {
+    try {
+      const saved = localStorage.getItem('pulse_assignments');
+      return saved ? JSON.parse(saved) || [] : [];
+    } catch { return []; }
+  });
+
+  // Persistence effects
+  useEffect(() => {
+    localStorage.setItem('pulse_equipment', JSON.stringify(equipment));
+  }, [equipment]);
+
+  useEffect(() => {
+    localStorage.setItem('pulse_projects', JSON.stringify(projects));
+  }, [projects]);
+
+  useEffect(() => {
+    localStorage.setItem('pulse_clients', JSON.stringify(clients));
+  }, [clients]);
+
+  useEffect(() => {
+    localStorage.setItem('pulse_vendors', JSON.stringify(vendors));
+  }, [vendors]);
+
+  useEffect(() => {
+    localStorage.setItem('pulse_freelancers', JSON.stringify(freelancers));
+  }, [freelancers]);
+
+  useEffect(() => {
+    localStorage.setItem('pulse_hired_equipment', JSON.stringify(hiredEquipment));
+  }, [hiredEquipment]);
+
+  useEffect(() => {
+    localStorage.setItem('pulse_assignments', JSON.stringify(assignments));
+  }, [assignments]);
+
+  useEffect(() => {
+    localStorage.setItem('pulse_maintenance_tasks', JSON.stringify(maintenanceTasks));
+  }, [maintenanceTasks]);
+  
+  useEffect(() => {
+    localStorage.setItem('pulse_attendance', JSON.stringify(attendance));
+  }, [attendance]);
+
+  useEffect(() => {
+    localStorage.setItem('pulse_leave_requests', JSON.stringify(leaveRequests));
+  }, [leaveRequests]);
+
+  useEffect(() => {
+    localStorage.setItem('pulse_calendar_config', JSON.stringify(calendarConfig));
+  }, [calendarConfig]);
+
+  useEffect(() => {
+    localStorage.setItem('pulse_active_tab', activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    localStorage.setItem('pulse_theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+
+  const handleUpdateUser = async (updated: User) => {
+    setUser(updated);
+    if (supabase && supabase.from) {
+      await supabase.from('profiles').update({ avatar_url: updated.imageUrl }).eq('id', updated.id);
+    }
+  };
+
+  const addProject = (newItem: Omit<Project, 'id'>) => {
+    const id = `PRJ-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    setProjects(prev => [...prev, { ...newItem, id } as Project]);
+  };
+
+  const setRole = (role: UserRole) => {
+    const newUser = MOCK_USERS.find(u => u.role === role) || MOCK_USERS[0];
+    setUser(newUser);
+    if (role === 'Staff' && activeTab === 'dashboard') setActiveTab('inventory');
+  };
+
+  const currentTitle = () => {
+    switch(activeTab) {
+      case 'dashboard': return 'Pulse Command';
+      case 'inventory': return 'Fleet Ops';
+      case 'resources': return 'CRM Hub';
+      case 'projects': return 'Projects';
+      case 'timeclock': return 'Time Clock';
+      default: return 'Pulse';
+    }
+  };
+
+  const equipStatusData = React.useMemo(() => [
+    { name: 'Available', value: equipment.filter(e => e.status === 'Available').length, color: '#10b981' },
+    { name: 'In Use', value: equipment.filter(e => e.status === 'In Use').length, color: '#3b82f6' },
+    { name: 'Repair', value: equipment.filter(e => e.status === 'Under Maintenance').length, color: '#f97316' },
+  ], [equipment]);
+
+  return (
+    <div className="flex flex-col mobile-h-screen bg-[var(--bg-primary)] max-w-lg mx-auto overflow-hidden shadow-2xl relative border-x border-[var(--border-color)]">
+      <Header title={currentTitle()} user={user} setRole={setRole} theme={theme} toggleTheme={toggleTheme} onLogout={onLogout} onUpdateUser={handleUpdateUser} />
+      
+      <main className="flex-1 overflow-y-auto overflow-x-hidden">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            className="h-full"
+          >
+            {activeTab === 'dashboard' && <DashboardView statusData={equipStatusData} projects={projects} clients={clients} />}
+            {activeTab === 'inventory' && (
+              <InventoryView 
+                role={user.role} 
+                equipment={equipment}
+                maintenanceTasks={maintenanceTasks}
+                assignments={assignments}
+                onAdd={(e) => setEquipment(prev => [...prev, { ...e, id: `e${Date.now()}` } as Equipment])}
+                onUpdate={(upd) => setEquipment(prev => prev.map(e => e.id === upd.id ? upd : e))}
+                onDelete={(id) => setEquipment(prev => prev.filter(e => e.id !== id))}
+                onAddMaintenanceTask={(t) => setMaintenanceTasks(prev => [...prev, t])}
+                onUpdateMaintenanceTask={(t) => setMaintenanceTasks(prev => prev.map(item => item.id === t.id ? t : item))}
+              />
+            )}
+            {activeTab === 'resources' && (
+              <ResourcesView 
+                clients={clients} 
+                vendors={vendors} 
+                freelancers={freelancers}
+                onAddClient={(c) => setClients(prev => [...prev, { ...c, id: `c${Date.now()}` } as Client])}
+                onUpdateClient={(c) => setClients(prev => prev.map(item => item.id === c.id ? c : item))}
+                onDeleteClient={(id) => setClients(prev => prev.filter(c => c.id !== id))}
+                onAddVendor={(v) => setVendors(prev => [...prev, { ...v, id: `v${Date.now()}` } as Vendor])}
+                onUpdateVendor={(v) => setVendors(prev => prev.map(item => item.id === v.id ? v : item))}
+                onDeleteVendor={(id) => setVendors(prev => prev.filter(v => v.id !== id))}
+                onAddFreelancer={(f) => setFreelancers(prev => [...prev, { ...f, id: `f${Date.now()}` } as Freelancer])}
+                onUpdateFreelancer={(f) => setFreelancers(prev => prev.map(item => item.id === f.id ? f : item))}
+                onDeleteFreelancer={(id) => setFreelancers(prev => prev.filter(f => f.id !== id))}
+              />
+            )}
+            {activeTab === 'timeclock' && (
+              <TimeClockView 
+                user={user} 
+                attendance={attendance} 
+                leaveRequests={leaveRequests}
+                calendarConfig={calendarConfig}
+                onCheckIn={() => {
+                  const record: AttendanceRecord = {
+                    id: `a${Date.now()}`,
+                    staffId: user.id,
+                    date: new Date().toISOString().split('T')[0],
+                    checkIn: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    hoursWorked: 0
+                  };
+                  setAttendance([...attendance, record]);
+                  setUser({ ...user, checkInStatus: 'in', lastCheckIn: record.checkIn });
+                }}
+                onCheckOut={() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  const record = attendance.find(a => a.staffId === user.id && a.date === today && !a.checkOut);
+                  if (record) {
+                    const checkOut = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    setAttendance(attendance.map(a => a.id === record.id ? { ...a, checkOut, hoursWorked: 8 } : a)); // Simplified calculation
+                    setUser({ ...user, checkInStatus: 'out' });
+                  }
+                }}
+                onRequestLeave={(req) => setLeaveRequests([...leaveRequests, { ...req, id: `l${Date.now()}` }])}
+              />
+            )}
+            {activeTab === 'calendar' && (
+              <CalendarView projects={projects} leaveRequests={leaveRequests} assignments={assignments} />
+            )}
+            {activeTab === 'admin' && (
+              <AdminSettingsView config={calendarConfig} onUpdateConfig={setCalendarConfig} />
+            )}
+            {activeTab === 'projects' && (
+              <ProjectsView 
+                role={user.role} 
+                projects={projects}
+                clients={clients}
+                users={MOCK_USERS} 
+                equipment={equipment}
+                vendors={vendors}
+                freelancers={freelancers}
+                assignments={assignments}
+                onUpdateAssignments={setAssignments}
+                onAdd={addProject}
+                onUpdate={(upd) => setProjects(prev => prev.map(p => p.id === upd.id ? upd : p))}
+                onDelete={(id) => setProjects(prev => prev.filter(p => p.id !== id))}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </main>
+
+      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} role={user.role} />
+    </div>
+  );
+}
+
