@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import QrScanner from 'react-qr-scanner';
+import React, { useState, useEffect, useRef } from 'react';
+import { Html5QrcodeScanner, Html5QrcodeScanType } from 'html5-qrcode';
 import QRCode from 'qrcode';
 import { Camera, Download, X } from 'lucide-react';
 
@@ -9,10 +9,37 @@ interface Props {
 }
 
 export const QRCodeScanner: React.FC<Props> = ({ onScan, onClose }) => {
-  const handleError = (err: any) => console.error(err);
-  const handleScan = (data: any) => {
-    if (data) onScan(data.text);
-  };
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+
+  useEffect(() => {
+    scannerRef.current = new Html5QrcodeScanner(
+      "qr-reader",
+      { 
+        fps: 10, 
+        qrbox: { width: 250, height: 250 },
+        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
+      },
+      /* verbose= */ false
+    );
+
+    scannerRef.current.render(
+      (decodedText) => {
+        onScan(decodedText);
+        if (scannerRef.current) {
+          scannerRef.current.clear().catch(error => console.error("Failed to clear scanner", error));
+        }
+      },
+      (error) => {
+        // Suppress errors during scanning as they are very frequent (e.g. "No QR code found")
+      }
+    );
+
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch(error => console.error("Failed to clear scanner during unmount", error));
+      }
+    };
+  }, [onScan]);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -21,12 +48,7 @@ export const QRCodeScanner: React.FC<Props> = ({ onScan, onClose }) => {
             <h2 className="text-lg font-bold">Scan QR Code</h2>
             <button onClick={onClose}><X size={20} /></button>
         </div>
-        <QrScanner
-          delay={300}
-          style={{ width: '100%', borderRadius: '10px' }}
-          onError={handleError}
-          onScan={handleScan}
-        />
+        <div id="qr-reader" style={{ width: '100%' }}></div>
       </div>
     </div>
   );
