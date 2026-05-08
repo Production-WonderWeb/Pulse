@@ -1,6 +1,6 @@
 {
   "name": "Pulse",
-  "description": "Mobile-first equipment management, project tracking, staff time clock, and administrative dashboard.",
+  "description": "High-tech operational command center for equipment management, project tracking, and live staff logistics with a precision-engineered aesthetic.",
   "requestFramePermissions": [
     "camera"
   ],

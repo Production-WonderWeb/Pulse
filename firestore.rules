@@ -1,0 +1,127 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny for safety
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Bootstrapped Admin check
+    function isBootstrappedAdmin() {
+      return request.auth.token.email == 'Production@wonderweb.ae';
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        isBootstrappedAdmin() || 
+        (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'Administrator')
+      );
+    }
+
+    function isManager() {
+      return isSignedIn() && (
+        isAdmin() || 
+        (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'Manager')
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Collections ---
+
+    // Profiles
+    match /profiles/{profileId} {
+      function isValidProfile(data) {
+        return (!('id' in data) || data.id == profileId) &&
+               (!('name' in data) || (data.name is string && data.name.size() <= 200)) &&
+               (!('display_name' in data) || (data.display_name is string && data.display_name.size() <= 200)) &&
+               (!('email' in data) || (data.email is string && data.email.size() <= 200)) &&
+               (!('role' in data) || (data.role in ['Administrator', 'Manager', 'Staff'])) &&
+               (!('avatar_url' in data) || (data.avatar_url is string && data.avatar_url.size() <= 5000)) &&
+               (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 5000)) &&
+               (!('phone' in data) || (data.phone is string && data.phone.size() <= 50)) &&
+               (!('whatsapp' in data) || (data.whatsapp is string && data.whatsapp.size() <= 50)) &&
+               (!('address' in data) || (data.address is string && data.address.size() <= 500)) &&
+               (!('emergencyContact' in data) || (data.emergencyContact is string && data.emergencyContact.size() <= 50)) &&
+               (!('emergencyContactName' in data) || (data.emergencyContactName is string && data.emergencyContactName.size() <= 100)) &&
+               (!('emergencyContactRelation' in data) || (data.emergencyContactRelation is string && data.emergencyContactRelation.size() <= 50)) &&
+               (!('isOnboarded' in data) || (data.isOnboarded is bool));
+      }
+
+      allow read: if isSignedIn();
+      
+      allow create: if isSignedIn() && isOwner(profileId) && isValidProfile(incoming()) && (
+        // New users default to Staff unless bootstrapped
+        (incoming().get('role', 'Staff') == 'Staff' || isBootstrappedAdmin())
+      );
+
+      allow update: if isSignedIn() && isValidProfile(incoming()) && (
+        // Case 1: Admin updating someone else's info (EXCLUDING ROLE - managed via Console only)
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'display_name', 'email', 'avatar_url', 'imageUrl', 'id', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded'])) ||
+        // Case 2: Owner updating their own info
+        (isOwner(profileId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'display_name', 'avatar_url', 'imageUrl', 'checkInStatus', 'lastCheckIn', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded', 'emergencyContactName', 'emergencyContactRelation']))
+      );
+    }
+
+    // Equipment
+    match /equipment/{equipmentId} {
+      function isValidEquipment(data) {
+        return (!('id' in data) || data.id == equipmentId) &&
+               data.name is string && data.name.size() <= 200 &&
+               (!('status' in data) || (data.status in ['Available', 'In Use', 'Under Maintenance']));
+      }
+
+      allow read: if isSignedIn();
+      allow create: if isManager() && isValidId(equipmentId) && isValidEquipment(incoming());
+      allow update: if isSignedIn() && isValidEquipment(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Projects
+    match /projects/{projectId} {
+      function isValidProject(data) {
+        return (!('id' in data) || data.id == projectId) &&
+               data.name is string && data.name.size() <= 200 &&
+               (!('status' in data) || (data.status in ['planning', 'active', 'completed', 'on-hold']));
+      }
+
+      allow read: if isSignedIn();
+      allow create: if isManager() && isValidId(projectId) && isValidProject(incoming());
+      allow update: if isSignedIn() && isValidProject(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Shared "Manager or Above" CRUD collections
+    match /{collection}/{itemId} {
+      allow read: if isSignedIn() && collection in ['clients', 'vendors', 'assignments', 'attendance', 'leaveRequests', 'maintenanceTasks', 'freelancers', 'hiredEquipment'];
+      
+      // Attendance specific: allow self-creation
+      allow create: if isSignedIn() && collection == 'attendance' && (isOwner(incoming().staffId) || isManager());
+      
+      // General Manager write
+      allow write: if isManager() && collection in ['clients', 'vendors', 'assignments', 'attendance', 'leaveRequests', 'maintenanceTasks', 'freelancers', 'hiredEquipment'];
+    }
+  }
+}
+

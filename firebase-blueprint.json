@@ -1,0 +1,114 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "User Profile",
+      "description": "Information about a user in the system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["Administrator", "Manager", "Staff"] },
+        "imageUrl": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "address": { "type": "string" },
+        "emergencyContact": { "type": "string" },
+        "emergencyContactName": { "type": "string" },
+        "emergencyContactRelation": { "type": "string" },
+        "isOnboarded": { "type": "boolean" },
+        "checkInStatus": { "type": "string", "enum": ["in", "out"] },
+        "lastCheckIn": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "Equipment": {
+      "title": "Equipment Asset",
+      "description": "An asset managed in the inventory.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "subCategory": { "type": "string" },
+        "serialNumber": { "type": "string" },
+        "purchaseDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["Available", "In Use", "Under Maintenance"] },
+        "lastMaintenance": { "type": "string" },
+        "nextMaintenance": { "type": "string" },
+        "imageUrl": { "type": "string" }
+      },
+      "required": ["id", "name", "category", "serialNumber", "status"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "A project or job.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientContactId": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "address": { "type": "string" },
+            "mapLink": { "type": "string" }
+          }
+        },
+        "status": { "type": "string", "enum": ["planning", "active", "completed", "on-hold"] },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" }
+      },
+      "required": ["id", "name", "clientId", "status", "startDate", "endDate"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "A client company.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Vendor": {
+      "title": "Vendor",
+      "description": "A supplier or service provider.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Assignment": {
+      "title": "Project Resource Assignment",
+      "description": "Assignment of a resource to a project.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "resourceId": { "type": "string" },
+        "resourceType": { "type": "string", "enum": ["staff", "equipment", "freelancer", "vendor_service"] },
+        "serviceId": { "type": "string" },
+        "dateId": { "type": "string" }
+      },
+      "required": ["id", "projectId", "resourceId", "resourceType"]
+    }
+  },
+  "firestore": {
+    "profiles/{profileId}": { "schema": "Profile", "description": "User profiles" },
+    "equipment/{equipmentId}": { "schema": "Equipment", "description": "Equipment inventory" },
+    "projects/{projectId}": { "schema": "Project", "description": "Projects" },
+    "clients/{clientId}": { "schema": "Client", "description": "Clients" },
+    "vendors/{vendorId}": { "schema": "Vendor", "description": "Vendors" },
+    "assignments/{assignmentId}": { "schema": "Assignment", "description": "Resource assignments" }
+  }
+}

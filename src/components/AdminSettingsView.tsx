@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { CalendarConfig, User, UserRole } from '../types';
 import { Trash2, Plus, Shield, User as UserIcon } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { collection, getDocs, updateDoc, doc } from 'firebase/firestore';
 
 interface Props {
   config: CalendarConfig;
@@ -19,19 +20,20 @@ export const AdminSettingsView: React.FC<Props> = ({ config, onUpdateConfig }) =
   }, []);
 
   const fetchUsers = async () => {
-    if (!supabase || !supabase.from) {
+    if (!db) {
       setLoadingUsers(false);
       return;
     }
     try {
-      const { data, error } = await supabase.from('profiles').select('*');
-      if (error) throw error;
+      const querySnapshot = await getDocs(collection(db, 'profiles'));
+      const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
       if (data) {
-        setUsers(data.map(p => ({
+        setUsers(data.map((p: any) => ({
           id: p.id,
-          name: p.display_name || p.email.split('@')[0],
-          email: p.email,
-          role: p.role as UserRole,
+          name: p.display_name || p.email?.split('@')[0] || 'Unknown User',
+          email: p.email || '',
+          role: (p.role as UserRole) || 'Staff',
           imageUrl: p.avatar_url,
         })));
       }
@@ -39,19 +41,6 @@ export const AdminSettingsView: React.FC<Props> = ({ config, onUpdateConfig }) =
       console.error("Error fetching users", err);
     } finally {
       setLoadingUsers(false);
-    }
-  };
-
-  const updateUserRole = async (userId: string, newRole: string) => {
-    if (!supabase || !supabase.from) return;
-    try {
-      const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
-      if (error) throw error;
-      alert("User role updated successfully");
-      fetchUsers();
-    } catch (err) {
-      console.error("Error updating user role", err);
-      alert("Failed to update role");
     }
   };
 
@@ -76,7 +65,7 @@ export const AdminSettingsView: React.FC<Props> = ({ config, onUpdateConfig }) =
         ) : (
           <div className="space-y-3">
             {users.length === 0 ? (
-              <p className="text-sm text-[var(--text-secondary)]">No users found or Supabase not connected.</p>
+              <p className="text-sm text-[var(--text-secondary)]">No users found in the database.</p>
             ) : (
               users.map(u => (
                 <div key={u.id} className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] gap-4">
@@ -94,16 +83,10 @@ export const AdminSettingsView: React.FC<Props> = ({ config, onUpdateConfig }) =
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Shield size={16} className="text-[var(--text-secondary)]" />
-                    <select 
-                      value={u.role} 
-                      onChange={(e) => updateUserRole(u.id, e.target.value)}
-                      className="bg-transparent border border-[var(--border-color)] text-xs rounded p-1 outline-none font-bold"
-                    >
-                      <option value="Administrator">Administrator</option>
-                      <option value="Manager">Manager</option>
-                      <option value="Staff">Staff</option>
-                    </select>
+                    <Shield size={14} className="text-brand-blue" />
+                    <span className="text-[10px] font-black uppercase tracking-widest bg-brand-blue/10 text-brand-blue px-3 py-1.5 rounded-lg border border-brand-blue/20">
+                      {u.role}
+                    </span>
                   </div>
                 </div>
               ))

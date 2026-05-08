@@ -12,6 +12,13 @@ export interface User {
   role: UserRole;
   avatar?: string;
   imageUrl?: string;
+  phone?: string;
+  whatsapp?: string;
+  address?: string;
+  emergencyContact?: string;
+  emergencyContactName?: string;
+  emergencyContactRelation?: string;
+  isOnboarded?: boolean;
   checkInStatus?: 'in' | 'out';
   lastCheckIn?: string;
 }
