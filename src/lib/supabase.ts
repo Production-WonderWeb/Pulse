@@ -5,10 +5,23 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.en
 
 let client;
 
-if (supabaseUrl && supabaseAnonKey) {
-  client = createClient(supabaseUrl, supabaseAnonKey);
+const isValidUrl = (url: string | undefined) => {
+  if (!url) return false;
+  try {
+    new URL(url);
+    return url.startsWith('http');
+  } catch {
+    return false;
+  }
+};
+
+export const isRealSupabase = isValidUrl(supabaseUrl) && supabaseAnonKey && supabaseAnonKey !== 'your_supabase_anon_key' && !supabaseAnonKey.includes('your_');
+
+if (isRealSupabase) {
+  console.log('Initializing real Supabase client');
+  client = createClient(supabaseUrl!, supabaseAnonKey!);
 } else {
-  console.warn('Supabase URL or Anon Key is missing. Using mock client or authentication will fail.');
+  console.warn('Supabase URL or Anon Key is missing or invalid. Using mock client.');
   const mockQuery: any = {
     select: () => mockQuery,
     insert: () => mockQuery,

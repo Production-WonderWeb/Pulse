@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from './lib/supabase';
+import { supabase, isRealSupabase } from './lib/supabase';
 import App from './App';
 import { User, UserRole } from './types/index';
 
 const AuthWrapper = () => {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
-  const [error, setError] = useState('');
   const [userProfile, setUserProfile] = useState<User | null>(null);
 
   useEffect(() => {
@@ -18,15 +18,18 @@ const AuthWrapper = () => {
       return;
     }
 
+    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) fetchProfile(session.user);
       else setLoading(false);
     });
 
+    // Listen for changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log("Auth event:", _event, session?.user?.email);
       setSession(session);
       if (session) {
         fetchProfile(session.user);
@@ -42,6 +45,7 @@ const AuthWrapper = () => {
   const fetchProfile = async (user: any) => {
     if (!supabase || !supabase.from) return;
     try {
+      console.log("Fetching profile for:", user.id);
       let { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -49,36 +53,44 @@ const AuthWrapper = () => {
         .single();
         
       if (error && error.code === 'PGRST116') {
-        // Create profile if doesn't exist
+        console.log("Profile not found, creating one...");
+        const email = user.email || '';
         const { data: newData, error: insertError } = await supabase
           .from('profiles')
-          .insert([{ id: user.id, email: user.email, role: 'Staff', display_name: user.email.split('@')[0] }])
+          .insert([{ 
+            id: user.id, 
+            email: email, 
+            role: 'Staff', 
+            display_name: email.split('@')[0] || 'User' 
+          }])
           .select()
           .single();
           
         if (insertError) {
-          console.error("Insert profile error:", insertError);
-          setError(insertError.message);
+          console.error("Profile creation failed. Did you run the SQL?", insertError);
+          setError(`Profile error: ${insertError.message}. Make sure to run the SQL in your Supabase dashboard.`);
           setLoading(false);
           return;
         }
         data = newData;
       } else if (error) {
-        console.error("Select profile error:", error);
+        console.error("Profile fetch error:", error);
         setError(error.message);
         setLoading(false);
         return;
       }
       
-      setUserProfile({
-        id: data.id,
-        name: data.display_name || user.email.split('@')[0],
-        role: data.role as UserRole,
-        imageUrl: data.avatar_url || '',
-        email: data.email || user.email
-      });
+      if (data) {
+        setUserProfile({
+          id: data.id,
+          name: data.display_name || user.email?.split('@')[0] || 'User',
+          role: data.role as UserRole,
+          imageUrl: data.avatar_url || '',
+          email: data.email || user.email
+        });
+      }
     } catch (err: any) {
-      console.error("Error fetching profile", err);
+      console.error("Internal fetchProfile error", err);
       setError(err.message || 'Error fetching profile');
     } finally {
       setLoading(false);
@@ -92,40 +104,60 @@ const AuthWrapper = () => {
     
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password });
+        console.log("Attempting sign up for:", email);
+        const { data, error } = await supabase.auth.signUp({ 
+          email, 
+          password,
+          options: {
+            data: {
+              display_name: email.split('@')[0],
+            }
+          }
+        });
         if (error) throw error;
-        alert('Check your email for the login link!');
+        
+        if (data?.user && data?.session) {
+          // Signed up and logged in automatically (if email confirmation is disabled)
+          console.log("Sign up successful, session created");
+        } else {
+          // Email confirmation might be required
+          alert('Sign up successful! Please check your email for a confirmation link to complete registration.');
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       }
     } catch (err: any) {
+      console.error("Auth error:", err);
       setError(err.message || 'Authentication error');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+  if (!isRealSupabase) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--bg-primary)] p-4 text-center">
         <div className="max-w-md p-8 bg-[var(--bg-secondary)] rounded-3xl border border-[var(--border-color)] shadow-2xl relative">
-          <h1 className="text-2xl font-black mb-4">Supabase Setup Required</h1>
+          <h1 className="text-2xl font-black mb-4">Supabase Connection Error</h1>
           <p className="text-sm text-[var(--text-secondary)] mb-6 text-left">
-            To enable authentication and data saving, you must provide your Supabase credentials:
+            The application is unable to connect to Supabase. This could be because:
           </p>
-          <ol className="text-xs text-left list-decimal pl-5 space-y-2 mb-6">
-            <li>Create a project on <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-brand-blue underline">Supabase</a></li>
-            <li>Go to AI Studio Settings &gt; Secrets</li>
-            <li>Add <code className="bg-[var(--bg-primary)] px-1 rounded">VITE_SUPABASE_URL</code></li>
-            <li>Add <code className="bg-[var(--bg-primary)] px-1 rounded">VITE_SUPABASE_ANON_KEY</code></li>
-            <li>Run the SQL statements from the newly created <code>supabase.sql</code> file in your Supabase SQL Editor.</li>
-          </ol>
-          <div className="mt-6 pt-6 border-t border-[var(--border-color)]">
+          <ul className="text-xs text-left list-disc pl-5 space-y-2 mb-6">
+            <li>The keys you provided in <strong>Settings &gt; Secrets</strong> are missing or incorrect.</li>
+            <li>Vite is not picking up your environment variables.</li>
+            <li>There's a network issue connecting to your project.</li>
+          </ul>
+          <p className="text-xs text-left font-mono bg-red-500/10 p-3 rounded mb-6 break-all">
+            URL: {import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || 'Not Set'}<br/>
+            Key: { (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) ? 'Is Set (Hidden)' : 'Not Set' }
+          </p>
+          <div className="pt-6 border-t border-[var(--border-color)]">
              <button 
                onClick={() => {
                  setSession({ user: { id: 'mock-1', email: 'admin@demo.com' } });
                  setUserProfile({ id: 'mock-1', name: 'Admin Demo', email: 'admin@demo.com', role: 'Administrator', imageUrl: '' });
+                 setLoading(false);
                }}
                className="w-full bg-[var(--bg-primary)] border border-brand-orange text-brand-orange font-bold py-3 rounded-2xl shadow-xl hover:bg-brand-orange/10 transition-colors"
              >
@@ -147,8 +179,12 @@ const AuthWrapper = () => {
         <form onSubmit={handleAuth} className="w-full max-w-sm p-8 bg-[var(--bg-secondary)] rounded-3xl border border-[var(--border-color)] shadow-2xl">
           <h2 className="text-2xl font-black text-center mb-6">{isSignUp ? 'Create Account' : 'Sign In'}</h2>
           
-          {error && <p className="text-red-500 text-xs mb-4 text-center">{error}</p>}
-          
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-6">
+              <p className="text-red-500 text-xs font-medium">{error}</p>
+            </div>
+          )}
+
           <div className="space-y-4">
             <div>
               <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Email</label>
@@ -170,6 +206,7 @@ const AuthWrapper = () => {
                 className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-sm outline-none focus:border-brand-blue"
               />
             </div>
+            
             <button
               type="submit"
               className="w-full bg-brand-blue text-white font-bold py-3 rounded-2xl shadow-xl shadow-brand-blue/20 hover:opacity-90 transition-opacity mt-4"
@@ -188,30 +225,17 @@ const AuthWrapper = () => {
               </div>
             )}
             
-            {session && !userProfile && (
-               <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
-                 <p className="text-[10px] text-red-500 font-medium text-left">
-                   You are logged in, but there was an error fetching your profile: <strong>{error || 'Table might be missing'}</strong>.
-                 </p>
-                 <p className="text-[10px] text-red-500 font-medium text-left mt-2">
-                   <strong>How to fix:</strong> You need to run the SQL commands listed in the <code>supabase.sql</code> file in your Supabase SQL Editor to create the profiles table.
-                 </p>
-                 <p className="text-left mt-2">
-                   <button type="button" className="text-[10px] underline font-bold text-red-500" onClick={() => supabase.auth.signOut()}>Sign Out & Try Again</button>
-                 </p>
-               </div>
-            )}
-            
-            <div className="mt-6 pt-6 border-t border-[var(--border-color)]">
+            <div className="mt-8 pt-6 border-t border-[var(--border-color)]">
               <button
                 type="button"
                 onClick={() => {
                   setSession({ user: { id: 'mock-1', email: 'admin@demo.com' } });
                   setUserProfile({ id: 'mock-1', name: 'Admin Demo', email: 'admin@demo.com', role: 'Administrator', imageUrl: '' });
+                  setLoading(false);
                 }}
-                className="w-full bg-[var(--bg-primary)] border border-brand-orange text-brand-orange font-bold py-3 rounded-2xl shadow-xl hover:bg-brand-orange/10 transition-colors"
+                className="w-full text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors underline"
               >
-                Skip & Continue in Demo Mode
+                Or enter Demo Mode for testing
               </button>
             </div>
           </div>
