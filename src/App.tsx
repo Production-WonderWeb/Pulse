@@ -270,13 +270,13 @@ const generateProjectPDF = async (project: Project, client?: Client, assignments
 
 const BottomNav = ({ activeTab, setActiveTab, role }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole }) => {
   const tabs = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Dash', roles: ['Administrator', 'Manager'] as UserRole[] },
-    { id: 'inventory', icon: Warehouse, label: 'Fleet', roles: ['Administrator', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'resources', icon: Users, label: 'CRM', roles: ['Administrator', 'Manager'] as UserRole[] },
-    { id: 'projects', icon: Briefcase, label: 'Jobs', roles: ['Administrator', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'timeclock', icon: Clock, label: 'Time', roles: ['Administrator', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'calendar', icon: Calendar, label: 'Cal', roles: ['Administrator', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'admin', icon: Settings, label: 'Adm', roles: ['Administrator'] as UserRole[] },
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Dash', roles: ['Administrator', 'Admin', 'Manager'] as UserRole[] },
+    { id: 'inventory', icon: Warehouse, label: 'Fleet', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'resources', icon: Users, label: 'CRM', roles: ['Administrator', 'Admin', 'Manager'] as UserRole[] },
+    { id: 'projects', icon: Briefcase, label: 'Jobs', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'timeclock', icon: Clock, label: 'Time', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'calendar', icon: Calendar, label: 'Cal', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'admin', icon: Settings, label: 'Adm', roles: ['Administrator', 'Admin'] as UserRole[] },
   ].filter(t => t.roles.includes(role));
 
   return (
@@ -309,13 +309,13 @@ const BottomNav = ({ activeTab, setActiveTab, role }: { activeTab: string, setAc
 
 const Sidebar = ({ activeTab, setActiveTab, role, onLogout }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole, onLogout: () => void }) => {
   const tabs = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['Administrator', 'Manager'] as UserRole[] },
-    { id: 'inventory', icon: Warehouse, label: 'Fleet', roles: ['Administrator', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'resources', icon: Users, label: 'CRM Hub', roles: ['Administrator', 'Manager'] as UserRole[] },
-    { id: 'projects', icon: Briefcase, label: 'Projects', roles: ['Administrator', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'timeclock', icon: Clock, label: 'Time Clock', roles: ['Administrator', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'calendar', icon: Calendar, label: 'Calendar', roles: ['Administrator', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'admin', icon: Settings, label: 'Settings', roles: ['Administrator'] as UserRole[] },
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['Administrator', 'Admin', 'Manager'] as UserRole[] },
+    { id: 'inventory', icon: Warehouse, label: 'Fleet', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'resources', icon: Users, label: 'CRM Hub', roles: ['Administrator', 'Admin', 'Manager'] as UserRole[] },
+    { id: 'projects', icon: Briefcase, label: 'Projects', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'timeclock', icon: Clock, label: 'Time Clock', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'calendar', icon: Calendar, label: 'Calendar', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'admin', icon: Settings, label: 'Settings', roles: ['Administrator', 'Admin'] as UserRole[] },
   ].filter(t => t.roles.includes(role));
 
   return (
@@ -391,7 +391,7 @@ const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser }: { t
           className="w-10 h-10 rounded-xl bg-[var(--bg-secondary)] flex items-center justify-center border border-[var(--border-color)] shadow-sm cursor-pointer overflow-hidden relative group"
         >
           {user.imageUrl ? (
-            <img src={user.imageUrl} alt={user.name} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+            <img src={user.imageUrl} alt={user.name} className="w-full h-full object-cover transition-transform group-hover:scale-110" referrerPolicy="no-referrer" />
           ) : (
             <div className="w-full h-full bg-brand-orange/10 flex items-center justify-center text-brand-orange">
               <UserIcon size={20} />
@@ -525,7 +525,8 @@ const ResourcesView = ({
       address: item.address || '',
       emergencyContact: item.emergencyContact || '',
       emergencyContactName: item.emergencyContactName || '',
-      emergencyContactRelation: item.emergencyContactRelation || ''
+      emergencyContactRelation: item.emergencyContactRelation || '',
+      imageUrl: item.imageUrl || item.avatar_url || ''
     });
     setIsModalOpen(true);
   };
@@ -542,7 +543,8 @@ const ResourcesView = ({
       address: '',
       emergencyContact: '',
       emergencyContactName: '',
-      emergencyContactRelation: ''
+      emergencyContactRelation: '',
+      imageUrl: ''
     });
   };
 
@@ -582,8 +584,18 @@ const ResourcesView = ({
       >
         <div className="flex justify-between items-start">
           <div className="flex gap-4">
-            <div className="w-10 h-10 rounded-2xl bg-[var(--bg-primary)] flex items-center justify-center text-brand-blue border border-[var(--border-color)]">
-              {isClient ? <UserIcon size={18} /> : isVendor ? <Truck size={18} /> : isStaff ? <UserIcon size={18} /> : <Users size={18} />}
+            <div className="w-10 h-10 rounded-2xl bg-[var(--bg-primary)] flex items-center justify-center text-brand-blue border border-[var(--border-color)] overflow-hidden shrink-0">
+              {isStaff && (item.imageUrl || item.avatar_url) ? (
+                <img src={item.imageUrl || item.avatar_url} alt={item.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : isClient ? (
+                <UserIcon size={18} />
+              ) : isVendor ? (
+                <Truck size={18} />
+              ) : isStaff ? (
+                <UserIcon size={18} />
+              ) : (
+                <Users size={18} />
+              )}
             </div>
             <div>
               <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-tight">{item.name}</h3>
@@ -838,6 +850,16 @@ const ResourcesView = ({
                     className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Avatar Image URL</label>
+                <input 
+                  value={staffForm.imageUrl}
+                  onChange={(e) => setStaffForm({...staffForm, imageUrl: e.target.value})}
+                  placeholder="https://example.com/photo.jpg"
+                  className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
+                />
               </div>
             </div>
           )}
@@ -1382,7 +1404,7 @@ const ProjectsView = ({
                       >
                         <Download size={14} />
                       </button>
-                      {(role === 'Administrator' || role === 'Manager') && (
+                      {(role === 'Administrator' || role === 'Admin' || role === 'Manager') && (
                         <>
                           <button 
                             onClick={() => handleEdit(project)}
@@ -2317,7 +2339,7 @@ const InventoryView = ({
         >
           <Scan size={20} />
         </button>
-        {(role === 'Administrator' || role === 'Manager') && (
+        {(role === 'Administrator' || role === 'Admin' || role === 'Manager') && (
           <>
             <button 
               onClick={handleExportCSV}
@@ -2753,7 +2775,10 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
   const handleUpdateUser = async (updated: User) => {
     setUser(updated);
     if (db) {
-      await updateDoc(doc(db, 'profiles', updated.id), { avatar_url: updated.imageUrl });
+      await updateDoc(doc(db, 'profiles', updated.id), { 
+        avatar_url: updated.imageUrl,
+        imageUrl: updated.imageUrl 
+      });
     }
   };
 
@@ -2864,7 +2889,12 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                     const { id, ...data } = s;
                     // Exclude sensitive internal fields that might be accidentally passed
                     const { role, email, ...updatable } = data;
-                    await updateDoc(doc(db, 'profiles', id), updatable);
+                    // Ensure consistency between avatar_url and imageUrl
+                    const updateData = {
+                      ...updatable,
+                      avatar_url: updatable.imageUrl || updatable.avatar || ''
+                    };
+                    await updateDoc(doc(db, 'profiles', id), updateData);
                   }}
                   onAddClient={async (c) => await addDoc(collection(db, 'clients'), { ...c, createdAt: serverTimestamp() })}
                   onUpdateClient={async (c) => {

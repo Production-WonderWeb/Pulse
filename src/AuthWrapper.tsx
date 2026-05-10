@@ -13,7 +13,8 @@ import {
   doc, 
   getDoc, 
   setDoc,
-  serverTimestamp 
+  serverTimestamp,
+  onSnapshot 
 } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import App from './App';
@@ -80,79 +81,92 @@ const AuthWrapper = () => {
   const [resending, setResending] = useState(false);
 
   useEffect(() => {
+    let profileUnsubscribe: (() => void) | null = null;
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         if (firebaseUser.emailVerified) {
           setNeedsVerification(false);
-          await fetchProfile(firebaseUser);
+          
+          // Use onSnapshot for reactive profile updates (important for role changes from console)
+          const docRef = doc(db, 'profiles', firebaseUser.uid);
+          profileUnsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              setUserProfile({
+                id: firebaseUser.uid,
+                name: data.name || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+                email: firebaseUser.email || '',
+                role: data.role as UserRole,
+                imageUrl: data.imageUrl || data.avatar_url || '',
+                phone: data.phone,
+                whatsapp: data.whatsapp,
+                address: data.address,
+                emergencyContact: data.emergencyContact,
+                isOnboarded: data.isOnboarded,
+                checkInStatus: data.checkInStatus,
+                lastCheckIn: data.lastCheckIn
+              });
+              setLoading(false);
+            } else {
+              // Create initial profile if it doesn't exist
+              createInitialProfile(firebaseUser);
+            }
+          }, (err) => {
+            handleFirestoreError(err, OperationType.GET, `profiles/${firebaseUser.uid}`);
+            setLoading(false);
+          });
         } else {
-          // If they just signed up, we handle it in handleAuth
-          // If they are just landing here and are logged in but not verified
-          // We don't sign them out automatically here to allow "Resend" logic
-          // But we don't show the app
           setLoading(false);
         }
       } else {
         setUserProfile(null);
+        if (profileUnsubscribe) profileUnsubscribe();
         setLoading(false);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (profileUnsubscribe) profileUnsubscribe();
+    };
   }, []);
 
-  const fetchProfile = async (firebaseUser: FirebaseUser) => {
+  const createInitialProfile = async (firebaseUser: FirebaseUser) => {
     const profilePath = `profiles/${firebaseUser.uid}`;
+    const docRef = doc(db, 'profiles', firebaseUser.uid);
+    const initialProfile: any = {
+      id: firebaseUser.uid,
+      name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+      email: firebaseUser.email || '',
+      role: 'Staff', // Default role
+      imageUrl: '',
+      isOnboarded: false,
+      createdAt: serverTimestamp()
+    };
+    
     try {
-      const docRef = doc(db, 'profiles', firebaseUser.uid);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setUserProfile({
-          id: firebaseUser.uid,
-          name: data.name || firebaseUser.displayName || email.split('@')[0],
-          email: firebaseUser.email || '',
-          role: data.role as UserRole,
-          imageUrl: data.imageUrl || '',
-          phone: data.phone,
-          whatsapp: data.whatsapp,
-          address: data.address,
-          emergencyContact: data.emergencyContact,
-          isOnboarded: data.isOnboarded,
-          checkInStatus: data.checkInStatus,
-          lastCheckIn: data.lastCheckIn
-        });
-      } else {
-        // Create initial profile
-        const initialProfile: any = {
-          id: firebaseUser.uid,
-          name: firebaseUser.displayName || email.split('@')[0],
-          email: firebaseUser.email || '',
-          role: 'Staff', // Default role
-          imageUrl: '',
-          isOnboarded: false,
-          createdAt: serverTimestamp()
-        };
-        
-        try {
-          await setDoc(docRef, initialProfile);
-          setUserProfile({
-            id: firebaseUser.uid,
-            name: initialProfile.name,
-            email: initialProfile.email,
-            role: initialProfile.role as UserRole,
-            imageUrl: initialProfile.imageUrl,
-            isOnboarded: false
-          });
-        } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, profilePath);
-        }
-      }
+      await setDoc(docRef, initialProfile);
+      // onSnapshot will pick up this change
     } catch (err) {
-      handleFirestoreError(err, OperationType.GET, profilePath);
-    } finally {
-      setLoading(false);
+      handleFirestoreError(err, OperationType.WRITE, profilePath);
+    }
+  };
+
+  const handleAuthError = (err: any) => {
+    console.error("Auth error:", err);
+    const code = err.code || (err.cause && err.cause.code);
+    
+    if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
+      setError('Invalid email or password. Please verify your credentials or establish a new account.');
+    } else if (code === 'auth/email-already-in-use') {
+      setError('This email is already registered. Please sign in instead.');
+    } else if (code === 'auth/too-many-requests') {
+      setError('Access to this account has been temporarily disabled due to many failed login attempts. You can immediately restore it by resetting your password or you can try again later.');
+    } else if (code === 'auth/popup-closed-by-user') {
+      setError('The authentication popup was closed before completion. Please try again.');
+    } else {
+      setError(err.message || 'Authentication error');
     }
   };
 
@@ -177,8 +191,7 @@ const AuthWrapper = () => {
         }
       }
     } catch (err: any) {
-      console.error("Auth error:", err);
-      setError(err.message || 'Authentication error');
+      handleAuthError(err);
     } finally {
       setLoading(false);
     }
@@ -193,8 +206,7 @@ const AuthWrapper = () => {
       await signInWithPopup(auth, provider);
       // Profile fetching is handled by onAuthStateChanged
     } catch (err: any) {
-      console.error("Google Auth error:", err);
-      setError(err.message || 'Google Authentication error');
+      handleAuthError(err);
       setLoading(false);
     }
   };
@@ -210,20 +222,12 @@ const AuthWrapper = () => {
     setSuccess('');
     
     try {
-      // To resend verification, we might need a fresh sign in if not in current session
-      // But usually we can just ask them to sign in again to trigger the logic
-      // However, if we want a "Resend" button on the check email screen:
-      // We can't send verification without being signed in.
-      // So the flow is: Sign In -> Not Verified -> Sign Out -> Show Check Email.
-      // To "Resend", they'd technically need to sign in again.
-      // Or we can try to do a temporary sign in, send, then sign out.
-      
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       await sendEmailVerification(userCredential.user);
       await signOut(auth);
       setSuccess("Verification email resent successfully.");
     } catch (err: any) {
-      setError(err.message || "Failed to resend verification email.");
+      handleAuthError(err);
     } finally {
       setResending(false);
     }

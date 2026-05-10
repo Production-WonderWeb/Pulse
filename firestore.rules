@@ -24,7 +24,7 @@ service cloud.firestore {
       return isSignedIn() && (
         isBootstrappedAdmin() || 
         (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'Administrator')
+         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role in ['Administrator', 'Admin'])
       );
     }
 
@@ -57,7 +57,7 @@ service cloud.firestore {
                (!('name' in data) || (data.name is string && data.name.size() <= 200)) &&
                (!('display_name' in data) || (data.display_name is string && data.display_name.size() <= 200)) &&
                (!('email' in data) || (data.email is string && data.email.size() <= 200)) &&
-               (!('role' in data) || (data.role in ['Administrator', 'Manager', 'Staff'])) &&
+               (!('role' in data) || (data.role in ['Administrator', 'Admin', 'Manager', 'Staff'])) &&
                (!('avatar_url' in data) || (data.avatar_url is string && data.avatar_url.size() <= 5000)) &&
                (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 5000)) &&
                (!('phone' in data) || (data.phone is string && data.phone.size() <= 50)) &&
@@ -77,8 +77,8 @@ service cloud.firestore {
       );
 
       allow update: if isSignedIn() && isValidProfile(incoming()) && (
-        // Case 1: Admin updating someone else's info (EXCLUDING ROLE - managed via Console only)
-        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'display_name', 'email', 'avatar_url', 'imageUrl', 'id', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded'])) ||
+        // Case 1: Admin updating someone else's info (INCLUDING ROLE)
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'name', 'display_name', 'email', 'avatar_url', 'imageUrl', 'id', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded'])) ||
         // Case 2: Owner updating their own info
         (isOwner(profileId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'display_name', 'avatar_url', 'imageUrl', 'checkInStatus', 'lastCheckIn', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded', 'emergencyContactName', 'emergencyContactRelation']))
       );

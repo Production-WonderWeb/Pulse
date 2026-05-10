@@ -55,6 +55,15 @@ export const AdminSettingsView: React.FC<Props> = ({ config, onUpdateConfig }) =
     onUpdateConfig({ ...config, publicHolidays: config.publicHolidays.filter(h => h !== date) });
   };
 
+  const updateUserRole = async (userId: string, newRole: string) => {
+    try {
+      await updateDoc(doc(db, 'profiles', userId), { role: newRole });
+      fetchUsers();
+    } catch (err) {
+      console.error("Error updating user role", err);
+    }
+  };
+
   return (
     <div className="p-6 space-y-8">
       <div className="space-y-6">
@@ -72,7 +81,7 @@ export const AdminSettingsView: React.FC<Props> = ({ config, onUpdateConfig }) =
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-brand-blue/10 flex items-center justify-center text-brand-blue border border-brand-blue/20 overflow-hidden shrink-0">
                       {u.imageUrl ? (
-                        <img src={u.imageUrl} alt={u.name} className="w-full h-full object-cover" />
+                        <img src={u.imageUrl} alt={u.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
                         <UserIcon size={20} />
                       )}
@@ -84,9 +93,16 @@ export const AdminSettingsView: React.FC<Props> = ({ config, onUpdateConfig }) =
                   </div>
                   <div className="flex items-center gap-2">
                     <Shield size={14} className="text-brand-blue" />
-                    <span className="text-[10px] font-black uppercase tracking-widest bg-brand-blue/10 text-brand-blue px-3 py-1.5 rounded-lg border border-brand-blue/20">
-                      {u.role}
-                    </span>
+                    <select 
+                      value={u.role} 
+                      onChange={(e) => updateUserRole(u.id, e.target.value)}
+                      className="bg-brand-blue/5 border border-brand-blue/20 text-[10px] font-black uppercase tracking-widest text-brand-blue px-3 py-1.5 rounded-lg focus:outline-none"
+                    >
+                      <option value="Administrator">Administrator</option>
+                      <option value="Admin">Admin</option>
+                      <option value="Manager">Manager</option>
+                      <option value="Staff">Staff</option>
+                    </select>
                   </div>
                 </div>
               ))
