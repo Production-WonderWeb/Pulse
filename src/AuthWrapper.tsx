@@ -294,7 +294,7 @@ const AuthWrapper = () => {
             </div>
           </div>
           <p className="mt-8 text-[10px] text-[var(--text-secondary)] uppercase tracking-[0.2em] font-black">
-            PULSE COMMAND SYSTEM
+            WONDERWEB PULSE COMMAND SYSTEM
           </p>
         </div>
       );
@@ -304,13 +304,27 @@ const AuthWrapper = () => {
       <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--bg-primary)] p-4">
         <form onSubmit={handleAuth} className="w-full max-w-sm p-8 bg-[var(--bg-secondary)] rounded-3xl border border-[var(--border-color)] shadow-2xl">
           <div className="flex justify-center mb-8">
-            <div className="w-12 h-12 bg-brand-blue rounded-xl flex items-center justify-center shadow-lg shadow-brand-blue/20">
-              <CheckCircle size={24} className="text-white" />
+            <div className="w-16 h-16 bg-white rounded-xl flex items-center justify-center p-2 shadow-lg shadow-black/5 overflow-hidden">
+              <img 
+                src="https://wonderweb.ae/wp-content/uploads/2023/10/WonderWebLogo-Colorful.png" 
+                alt="WonderWeb Logo" 
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  const parent = e.currentTarget.parentElement;
+                  if (parent) {
+                    const fallback = document.createElement('div');
+                    fallback.className = 'w-full h-full flex items-center justify-center bg-brand-blue text-white font-black text-xl';
+                    fallback.innerText = 'W';
+                    parent.appendChild(fallback);
+                  }
+                }}
+              />
             </div>
           </div>
           <h2 className="text-2xl font-black text-center mb-2 uppercase tracking-tight">{isSignUp ? 'New Account' : 'Welcome Back'}</h2>
           <p className="text-[10px] text-[var(--text-secondary)] font-black uppercase tracking-[0.2em] text-center mb-8">
-            {isSignUp ? 'System Initialization' : 'Authentication Required'}
+            {isSignUp ? 'WonderWeb Initialization' : 'Authentication Required'}
           </p>
           
           {error && (
@@ -325,7 +339,7 @@ const AuthWrapper = () => {
               <input
                 type="email"
                 required
-                placeholder="email@pulse.system"
+                placeholder="email@wonderweb.ae"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3.5 text-xs outline-none focus:border-brand-blue font-bold transition-all"
@@ -406,7 +420,7 @@ const AuthWrapper = () => {
           </div>
         </form>
         <p className="mt-8 text-[10px] text-[var(--text-secondary)] uppercase tracking-[0.2em] font-black">
-          PULSE COMMAND SYSTEM
+          WONDERWEB PULSE COMMAND SYSTEM
         </p>
       </div>
     );
