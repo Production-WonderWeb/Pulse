@@ -120,7 +120,15 @@ const PulseLogo = ({ className }: { className?: string }) => {
       src="https://wonderweb.ae/wp-content/uploads/2023/10/WonderWebLogo-Colorful.png" 
       alt="WonderWeb Logo" 
       className={className}
-      onError={() => setError(true)}
+      onError={(e) => {
+        const target = e.currentTarget;
+        const fallbackUrl = "https://wonderweb.ae/wp-content/uploads/2021/04/WonderWeb-Logo.png";
+        if (target.src !== fallbackUrl) {
+          target.src = fallbackUrl;
+        } else {
+          setError(true);
+        }
+      }}
     />
   );
 };

@@ -310,13 +310,20 @@ const AuthWrapper = () => {
                 alt="WonderWeb Logo" 
                 className="w-full h-full object-contain"
                 onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                  const parent = e.currentTarget.parentElement;
-                  if (parent) {
-                    const fallback = document.createElement('div');
-                    fallback.className = 'w-full h-full flex items-center justify-center bg-brand-blue text-white font-black text-xl';
-                    fallback.innerText = 'W';
-                    parent.appendChild(fallback);
+                  const target = e.currentTarget;
+                  // Try fallback
+                  const fallbackUrl = "https://wonderweb.ae/wp-content/uploads/2021/04/WonderWeb-Logo.png";
+                  if (target.src !== fallbackUrl) {
+                    target.src = fallbackUrl;
+                  } else {
+                    target.style.display = 'none';
+                    const parent = target.parentElement;
+                    if (parent) {
+                      const fallback = document.createElement('div');
+                      fallback.className = 'w-full h-full flex items-center justify-center bg-brand-blue text-white font-black text-xl';
+                      fallback.innerText = 'W';
+                      parent.appendChild(fallback);
+                    }
                   }
                 }}
               />

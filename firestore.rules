@@ -48,6 +48,11 @@ service cloud.firestore {
       return resource.data;
     }
 
+    // Connectivity test
+    match /test/connection {
+      allow get: if isSignedIn();
+    }
+
     // --- Collections ---
 
     // Profiles
