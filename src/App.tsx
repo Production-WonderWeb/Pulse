@@ -2734,6 +2734,11 @@ const InventoryView = ({
 export default function App({ initialUser, onLogout }: { initialUser?: User, onLogout?: () => void }) {
   if (!initialUser) return null; // Safe guard for production
   const [user, setUser] = useState<User>(initialUser); 
+
+  // Sync with prop from AuthWrapper
+  useEffect(() => {
+    if (initialUser) setUser(initialUser);
+  }, [initialUser]);
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('pulse_active_tab') || 'dashboard');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('pulse_theme') as 'light' | 'dark') || 'dark');
 
@@ -2831,12 +2836,19 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
   const handleUpdateUser = async (updated: User) => {
-    setUser(updated);
-    if (db) {
-      await updateDoc(doc(db, 'profiles', updated.id), { 
-        avatar_url: updated.imageUrl,
-        imageUrl: updated.imageUrl 
-      });
+    try {
+      setUser(updated);
+      if (db) {
+        const profileRef = doc(db, 'profiles', updated.id);
+        await updateDoc(profileRef, { 
+          avatar_url: updated.imageUrl || '',
+          imageUrl: updated.imageUrl || '',
+          updatedAt: serverTimestamp()
+        });
+        console.log("Profile updated successfully");
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `profiles/${updated.id}`);
     }
   };
 
@@ -2955,15 +2967,20 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                   freelancers={freelancers}
                   staff={staff}
                   onUpdateStaff={async (s) => {
-                    const { id, ...data } = s;
-                    // Exclude sensitive internal fields that might be accidentally passed
-                    const { role, email, ...updatable } = data;
-                    // Ensure consistency between avatar_url and imageUrl
-                    const updateData = {
-                      ...updatable,
-                      avatar_url: updatable.imageUrl || updatable.avatar || ''
-                    };
-                    await updateDoc(doc(db, 'profiles', id), updateData);
+                    try {
+                      const { id, ...data } = s;
+                      const { role, email, ...updatable } = data;
+                      const updateData = {
+                        ...updatable,
+                        avatar_url: updatable.imageUrl || '',
+                        imageUrl: updatable.imageUrl || '',
+                        updatedAt: serverTimestamp()
+                      };
+                      await updateDoc(doc(db, 'profiles', id), updateData);
+                      console.log(`Staff ${id} updated successfully`);
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.UPDATE, `profiles/${s.id}`);
+                    }
                   }}
                   onAddClient={async (c) => await addDoc(collection(db, 'clients'), { ...c, createdAt: serverTimestamp() })}
                   onUpdateClient={async (c) => {

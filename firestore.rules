@@ -63,15 +63,16 @@ service cloud.firestore {
                (!('display_name' in data) || (data.display_name is string && data.display_name.size() <= 200)) &&
                (!('email' in data) || (data.email is string && data.email.size() <= 200)) &&
                (!('role' in data) || (data.role in ['Administrator', 'Admin', 'Manager', 'Staff'])) &&
-               (!('avatar_url' in data) || (data.avatar_url is string && data.avatar_url.size() <= 5000)) &&
-               (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 5000)) &&
+               (!('avatar_url' in data) || (data.avatar_url is string && data.avatar_url.size() <= 1048576)) &&
+               (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 1048576)) &&
                (!('phone' in data) || (data.phone is string && data.phone.size() <= 50)) &&
                (!('whatsapp' in data) || (data.whatsapp is string && data.whatsapp.size() <= 50)) &&
                (!('address' in data) || (data.address is string && data.address.size() <= 500)) &&
                (!('emergencyContact' in data) || (data.emergencyContact is string && data.emergencyContact.size() <= 50)) &&
                (!('emergencyContactName' in data) || (data.emergencyContactName is string && data.emergencyContactName.size() <= 100)) &&
                (!('emergencyContactRelation' in data) || (data.emergencyContactRelation is string && data.emergencyContactRelation.size() <= 50)) &&
-               (!('isOnboarded' in data) || (data.isOnboarded is bool));
+               (!('isOnboarded' in data) || (data.isOnboarded is bool)) &&
+               (!('updatedAt' in data) || (data.updatedAt is timestamp));
       }
 
       allow read: if isSignedIn();
@@ -83,9 +84,9 @@ service cloud.firestore {
 
       allow update: if isSignedIn() && isValidProfile(incoming()) && (
         // Case 1: Admin updating someone else's info (INCLUDING ROLE)
-        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'name', 'display_name', 'email', 'avatar_url', 'imageUrl', 'id', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded'])) ||
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'name', 'display_name', 'email', 'avatar_url', 'imageUrl', 'id', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded', 'updatedAt'])) ||
         // Case 2: Owner updating their own info
-        (isOwner(profileId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'display_name', 'avatar_url', 'imageUrl', 'checkInStatus', 'lastCheckIn', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded', 'emergencyContactName', 'emergencyContactRelation']))
+        (isOwner(profileId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'display_name', 'avatar_url', 'imageUrl', 'checkInStatus', 'lastCheckIn', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded', 'emergencyContactName', 'emergencyContactRelation', 'updatedAt']))
       );
     }
 

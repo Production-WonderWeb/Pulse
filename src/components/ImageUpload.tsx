@@ -54,7 +54,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
           let height = img.height;
 
           // Resize logic to keep base64 strings manageable
-          const MAX_DIM = 800; // Increased a bit for better quality
+          const MAX_DIM = 600; // Reduced for better Firestore compatibility (1MB limit)
           if (width > height) {
             if (width > MAX_DIM) {
               height *= MAX_DIM / width;
@@ -72,7 +72,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(img, 0, 0, width, height);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.7); // Slightly lower quality to save space
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.5); // Lower quality for smaller footpint
             onChange(dataUrl);
           }
         } catch (err) {
