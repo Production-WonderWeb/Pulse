@@ -49,9 +49,11 @@ export const GanttChart: React.FC<GanttChartProps> = ({ tasks, onUpdateTasks }) 
     return differenceInDays(d, startDate) * DAY_WIDTH;
   };
 
-  const [dragging, setDragging] = useState<{ id: string; type: 'move' | 'resize-start' | 'resize-end'; initialX: number; initialStart: string; initialEnd: string } | null>(null);
+  const [dragging, setDragging] = useState<{ id: string; type: 'move' | 'resize-start' | 'resize-end' | 'progress'; initialX: number; initialStart: string; initialEnd: string; initialProgress: number } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [inputValue, setInputValue] = useState<string>('');
 
-  const handlePointerDown = (e: React.PointerEvent, taskId: string, type: 'move' | 'resize-start' | 'resize-end') => {
+  const handlePointerDown = (e: React.PointerEvent, taskId: string, type: 'move' | 'resize-start' | 'resize-end' | 'progress') => {
     e.stopPropagation();
     const task = tasks.find(t => t.id === taskId);
     if (!task || !onUpdateTasks) return;
@@ -62,7 +64,8 @@ export const GanttChart: React.FC<GanttChartProps> = ({ tasks, onUpdateTasks }) 
       type,
       initialX: e.clientX,
       initialStart: task.startDate,
-      initialEnd: task.endDate
+      initialEnd: task.endDate,
+      initialProgress: task.progress
     });
   };
 
@@ -70,9 +73,22 @@ export const GanttChart: React.FC<GanttChartProps> = ({ tasks, onUpdateTasks }) 
     if (!dragging || !onUpdateTasks) return;
 
     const deltaX = e.clientX - dragging.initialX;
-    const daysDelta = Math.round(deltaX / DAY_WIDTH);
     
-    if (daysDelta === 0) return;
+    if (dragging.type === 'progress') {
+      const taskWidth = (differenceInDays(parseISO(dragging.initialEnd), parseISO(dragging.initialStart)) + 1) * DAY_WIDTH - 8;
+      const progressDelta = (deltaX / taskWidth) * 100;
+      let newProgress = Math.round(Math.max(0, Math.min(100, dragging.initialProgress + progressDelta)));
+      
+      const updatedTasks = tasks.map(t => t.id === dragging.id ? { ...t, progress: newProgress } : t);
+      const currentTask = tasks.find(t => t.id === dragging.id);
+      if (currentTask?.progress !== newProgress) {
+        onUpdateTasks(updatedTasks);
+      }
+      return;
+    }
+
+    const daysDelta = Math.round(deltaX / DAY_WIDTH);
+    if (daysDelta === 0 && dragging.type !== 'progress') return;
 
     const updatedTasks = tasks.map(t => {
       if (t.id !== dragging.id) return t;
@@ -85,11 +101,9 @@ export const GanttChart: React.FC<GanttChartProps> = ({ tasks, onUpdateTasks }) 
         newEnd = addDays(newEnd, daysDelta);
       } else if (dragging.type === 'resize-start') {
         newStart = addDays(newStart, daysDelta);
-        // Prevent end before start
         if (differenceInDays(newEnd, newStart) < 0) newStart = newEnd;
       } else if (dragging.type === 'resize-end') {
         newEnd = addDays(newEnd, daysDelta);
-        // Prevent end before start
         if (differenceInDays(newEnd, newStart) < 0) newEnd = newStart;
       }
 
@@ -100,12 +114,22 @@ export const GanttChart: React.FC<GanttChartProps> = ({ tasks, onUpdateTasks }) 
       };
     });
 
-    // Only update if dates actually changed
     const currentTask = tasks.find(t => t.id === dragging.id);
     const updatedTask = updatedTasks.find(t => t.id === dragging.id);
     if (currentTask?.startDate !== updatedTask?.startDate || currentTask?.endDate !== updatedTask?.endDate) {
       onUpdateTasks(updatedTasks);
     }
+  };
+
+  const handleProgressInputSubmit = (taskId: string) => {
+    if (!onUpdateTasks) return;
+    const value = parseInt(inputValue);
+    if (!isNaN(value)) {
+      const progress = Math.max(0, Math.min(100, value));
+      const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, progress } : t);
+      onUpdateTasks(updatedTasks);
+    }
+    setEditingId(null);
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -211,11 +235,48 @@ export const GanttChart: React.FC<GanttChartProps> = ({ tasks, onUpdateTasks }) 
                       )}
 
                       {/* Progress Bar background */}
-                      <div className="absolute left-0 top-0 bottom-0 bg-current opacity-10 pointer-events-none rounded-lg" style={{ width: `${task.progress}%` }} />
+                      <div 
+                        className="absolute left-0 top-0 bottom-0 bg-current opacity-10 pointer-events-none rounded-lg" 
+                        style={{ width: `${task.progress}%` }} 
+                      />
+
+                      {/* Progress Resize Handle (Draggable fill level) */}
+                      {onUpdateTasks && (
+                        <div 
+                          className="absolute top-0 bottom-0 w-1.5 bg-current opacity-30 cursor-ew-resize z-20 hover:opacity-60 transition-opacity"
+                          style={{ left: `calc(${task.progress}% - 0.75px)` }}
+                          onPointerDown={(e) => handlePointerDown(e, task.id, 'progress')}
+                        />
+                      )}
                       
-                      <span className="text-[9px] font-black uppercase text-[var(--text-primary)] truncate z-0 pointer-events-none">
-                        {task.name}
-                      </span>
+                      <div className="flex items-center gap-2 z-0 pointer-events-none w-full truncate">
+                        <span className="text-[9px] font-black uppercase text-[var(--text-primary)] truncate">
+                          {task.name}
+                        </span>
+                        {editingId === task.id ? (
+                          <input
+                            autoFocus
+                            type="text"
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            onBlur={() => handleProgressInputSubmit(task.id)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleProgressInputSubmit(task.id)}
+                            className="w-8 bg-white/80 border border-brand-blue rounded text-[8px] font-bold px-1 py-0 pointer-events-auto"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <span 
+                            className="text-[8px] font-black text-brand-blue/60 pointer-events-auto cursor-pointer hover:text-brand-blue"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingId(task.id);
+                              setInputValue(task.progress.toString());
+                            }}
+                          >
+                            {task.progress}%
+                          </span>
+                        )}
+                      </div>
 
                       {/* Right Resize Handle */}
                       {onUpdateTasks && (
@@ -234,8 +295,8 @@ export const GanttChart: React.FC<GanttChartProps> = ({ tasks, onUpdateTasks }) 
       </div>
       
       <div className="flex justify-between items-center px-2">
-        <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase tracking-widest">
-          Grab center to reschedule • Drag edges to scale duration
+        <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase tracking-widest leading-relaxed">
+          Grab center to reschedule • Drag edges to scale duration • Drag vertical line inside bar to set progress • Click % to input value
         </p>
         <div className="flex items-center gap-1">
            <AlertCircle size={10} className="text-brand-orange" />
