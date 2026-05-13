@@ -21,6 +21,9 @@ export interface User {
   isOnboarded?: boolean;
   checkInStatus?: 'in' | 'out';
   lastCheckIn?: string;
+  yearlyLeaveDays?: number;
+  remainingCompOff?: number;
+  standardWorkingHours?: number;
 }
 
 export type EquipmentStatus = 'Available' | 'In Use' | 'Under Maintenance';
@@ -120,6 +123,7 @@ export interface ProjectTask {
 
 export interface Project {
   id: string;
+  referenceNumber?: string;
   name: string;
   clientId: string;
   clientContactId?: string;
@@ -152,7 +156,9 @@ export interface LeaveRequest {
 export enum LeaveType {
   ANNUAL = 'ANNUAL',
   SICK = 'SICK',
-  UNPAID = 'UNPAID'
+  UNPAID = 'UNPAID',
+  EARLY_LEAVE = 'EARLY_LEAVE',
+  COMP_OFF = 'COMP_OFF'
 }
 
 export enum LeaveStatus {
@@ -166,13 +172,24 @@ export interface AttendanceRecord {
   staffId: string;
   date: string;
   checkIn: string;
+  checkInRaw?: string;
   checkOut?: string;
   hoursWorked: number;
+  standardHours?: number;
+}
+
+export interface PublicHoliday {
+  id: string;
+  startDate: string;
+  endDate: string;
+  name: string;
+  description?: string;
 }
 
 export interface CalendarConfig {
   workingWeekends: number[];
-  publicHolidays: string[];
+  publicHolidays: PublicHoliday[];
+  forcedWorkingDates?: string[];
 }
 
 export interface AppState {
@@ -200,5 +217,22 @@ export interface HiredEquipment {
   details: string;
   dailyRate: number;
   status: 'active' | 'completed';
+}
+
+export interface SystemSettings {
+  id: string;
+  logoUrl?: string;
+  appName?: string;
+  primaryColor?: string;
+  updatedAt?: string;
+}
+
+export interface PDFExportConfig {
+  includeSpecs: boolean;
+  includeTimeline: boolean;
+  includeStaff: boolean;
+  includeEquipment: boolean;
+  includeFreelancers: boolean;
+  includeVendors: boolean;
 }
 

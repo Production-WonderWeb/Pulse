@@ -72,6 +72,9 @@ service cloud.firestore {
                (!('emergencyContactName' in data) || (data.emergencyContactName is string && data.emergencyContactName.size() <= 100)) &&
                (!('emergencyContactRelation' in data) || (data.emergencyContactRelation is string && data.emergencyContactRelation.size() <= 50)) &&
                (!('isOnboarded' in data) || (data.isOnboarded is bool)) &&
+               (!('yearlyLeaveDays' in data) || (data.yearlyLeaveDays is number)) &&
+               (!('remainingCompOff' in data) || (data.remainingCompOff is number)) &&
+               (!('standardWorkingHours' in data) || (data.standardWorkingHours is number)) &&
                (!('updatedAt' in data) || (data.updatedAt is timestamp));
       }
 
@@ -84,7 +87,7 @@ service cloud.firestore {
 
       allow update: if isSignedIn() && isValidProfile(incoming()) && (
         // Case 1: Admin updating someone else's info (INCLUDING ROLE)
-        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'name', 'display_name', 'email', 'avatar_url', 'imageUrl', 'id', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded', 'updatedAt'])) ||
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'name', 'display_name', 'email', 'avatar_url', 'imageUrl', 'id', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded', 'updatedAt', 'yearlyLeaveDays', 'remainingCompOff', 'standardWorkingHours'])) ||
         // Case 2: Owner updating their own info
         (isOwner(profileId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'display_name', 'avatar_url', 'imageUrl', 'checkInStatus', 'lastCheckIn', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded', 'emergencyContactName', 'emergencyContactRelation', 'updatedAt']))
       );
@@ -122,11 +125,30 @@ service cloud.firestore {
     match /{collection}/{itemId} {
       allow read: if isSignedIn() && collection in ['clients', 'vendors', 'assignments', 'attendance', 'leaveRequests', 'maintenanceTasks', 'freelancers', 'hiredEquipment'];
       
-      // Attendance specific: allow self-creation
-      allow create: if isSignedIn() && collection == 'attendance' && (isOwner(incoming().staffId) || isManager());
-      
-      // General Manager write
+      // Allow full CRUD for Managers
       allow write: if isManager() && collection in ['clients', 'vendors', 'assignments', 'attendance', 'leaveRequests', 'maintenanceTasks', 'freelancers', 'hiredEquipment'];
+      
+      // Self-service for attendance and leaveRequests
+      allow create: if isSignedIn() && collection in ['attendance', 'leaveRequests'] && isOwner(incoming().staffId);
+      allow update: if isSignedIn() && collection in ['attendance', 'leaveRequests'] && isOwner(existing().staffId);
+      allow delete: if isSignedIn() && collection in ['attendance', 'leaveRequests'] && isOwner(existing().staffId);
+    }
+
+    // Settings
+    match /settings/global {
+      function isValidBrandSettings(data) {
+        return (!('logoUrl' in data) || (data.logoUrl is string && data.logoUrl.size() <= 1048576)) &&
+               (!('appName' in data) || (data.appName is string && data.appName.size() <= 200)) &&
+               (!('primaryColor' in data) || (data.primaryColor is string && data.primaryColor.size() <= 50)) &&
+               (!('updatedAt' in data) || (data.updatedAt is timestamp || data.updatedAt is string));
+      }
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isValidBrandSettings(incoming());
+    }
+
+    match /settings/calendar {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
   }
 }

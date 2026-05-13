@@ -90,7 +90,9 @@ import {
   AttendanceRecord,
   CalendarConfig,
   LeaveType,
-  LeaveStatus
+  LeaveStatus,
+  SystemSettings,
+  PDFExportConfig
 } from './types/index';
 import { cn, formatDate } from './lib/utils';
 
@@ -105,27 +107,41 @@ const emptyData = [
   { name: 'Sun', hours: 0 },
 ];
 
-const PulseLogo = ({ className }: { className?: string }) => {
+const PulseLogo = ({ className, logoUrl }: { className?: string, logoUrl?: string }) => {
   const [error, setError] = useState(false);
   
-  if (error) {
+  const fallbacks = useMemo(() => [
+    logoUrl,
+    "https://wonderweb.ae/wp-content/uploads/2023/10/cropped-WonderWebLogo-Colorful-192x192.png",
+    "https://wonderweb.ae/wp-content/uploads/2023/10/WonderWebLogo-Colorful.png",
+    "https://wonderweb.ae/wp-content/uploads/2021/04/WonderWeb-Logo.png",
+    "https://wonderweb.ae/wp-content/uploads/2023/10/cropped-WW-Favicon-32x32.png"
+  ].filter(Boolean) as string[], [logoUrl]);
+
+  const [currentSrcIdx, setCurrentSrcIdx] = useState(0);
+
+  useEffect(() => {
+    setCurrentSrcIdx(0);
+    setError(false);
+  }, [logoUrl]);
+
+  if (error || currentSrcIdx >= fallbacks.length) {
     return (
-      <div className={cn("flex items-center justify-center bg-brand-blue text-white font-black text-xs", className)}>
-        W
+      <div className={cn("flex items-center justify-center bg-brand-blue/10 text-brand-blue font-black rounded-lg", className)}>
+        WW
       </div>
     );
   }
 
   return (
     <img 
-      src="https://wonderweb.ae/wp-content/uploads/2023/10/WonderWebLogo-Colorful.png" 
+      src={fallbacks[currentSrcIdx]} 
       alt="WonderWeb Logo" 
-      className={className}
-      onError={(e) => {
-        const target = e.currentTarget;
-        const fallbackUrl = "https://wonderweb.ae/wp-content/uploads/2021/04/WonderWeb-Logo.png";
-        if (target.src !== fallbackUrl) {
-          target.src = fallbackUrl;
+      className={cn("select-none min-w-[2.5rem] min-h-[2.5rem]", className)}
+      referrerPolicy="no-referrer"
+      onError={() => {
+        if (currentSrcIdx < fallbacks.length - 1) {
+          setCurrentSrcIdx(prev => prev + 1);
         } else {
           setError(true);
         }
@@ -140,140 +156,195 @@ const generateProjectPDF = async (project: Project, client?: Client, assignments
   equipment: Equipment[],
   freelancers: Freelancer[],
   hired: any[]
+}, settings?: SystemSettings | null, config: PDFExportConfig = {
+  includeSpecs: true,
+  includeTimeline: true,
+  includeStaff: true,
+  includeEquipment: true,
+  includeFreelancers: true,
+  includeVendors: true
 }) => {
   const doc = new jsPDF();
-  const primaryColor = '#3b82f6';
+  const primaryColor = settings?.primaryColor || '#3b82f6';
   const secondaryColor = '#6b7280';
   
   // Brand Header
   doc.setFillColor(primaryColor);
   doc.rect(0, 0, 210, 40, 'F');
-  doc.setTextColor('#ffffff');
-  doc.setFontSize(22);
-  doc.setFont('helvetica', 'bold');
-  doc.text('PROJECT MOBILIZATION BRIEF', 105, 25, { align: 'center' });
-  doc.setFontSize(10);
-  doc.text(`REF: ${project.id} | ${format(new Date(), 'dd MMM yyyy')}`, 105, 32, { align: 'center' });
 
-  // Project Info
-  doc.setTextColor('#1f2937');
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text('1. PROJECT SPECIFICATIONS', 15, 55);
-  doc.line(15, 57, 195, 57);
-
-  doc.setFontSize(10);
-  doc.text('PROJECT NAME:', 15, 65);
-  doc.setFont('helvetica', 'normal');
-  doc.text(project.name, 50, 65);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('CLIENT:', 15, 72);
-  doc.setFont('helvetica', 'normal');
-  doc.text(client?.name || 'N/A', 50, 72);
-
-  if (project.clientContactId) {
-    const contact = client?.contacts?.find(c => c.id === project.clientContactId);
-    if (contact) {
-      doc.setFont('helvetica', 'bold');
-      doc.text('CONTACT:', 15, 79);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`${contact.name} (${contact.role}) | ${contact.email} | ${contact.phone}`, 50, 79);
+  if (settings?.logoUrl) {
+    try {
+      doc.addImage(settings.logoUrl, 'PNG', 15, 5, 30, 30, undefined, 'FAST');
+    } catch (e) {
+      console.error("PDF Logo Error:", e);
     }
   }
 
+  doc.setTextColor('#ffffff');
+  doc.setFontSize(26);
   doc.setFont('helvetica', 'bold');
-  doc.text('CATEGORY:', 15, 86);
+  const headline = (settings?.appName || 'WONDERWEB').toUpperCase();
+  doc.text(headline, settings?.logoUrl ? 55 : 105, 18, { align: settings?.logoUrl ? 'left' : 'center' });
+  
+  doc.setFontSize(12);
+  doc.text(project.name.toUpperCase(), settings?.logoUrl ? 55 : 105, 26, { align: settings?.logoUrl ? 'left' : 'center' });
+  
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(project.category, 50, 86);
+  doc.text(`REF: ${project.referenceNumber || project.id} | ${format(new Date(), 'dd MMM yyyy')}`, settings?.logoUrl ? 55 : 105, 32, { align: settings?.logoUrl ? 'left' : 'center' });
 
-  doc.setFont('helvetica', 'bold');
-  doc.text('LOCATION:', 15, 93);
-  doc.setFont('helvetica', 'normal');
-  doc.text(project.location.address, 50, 93);
+  let yPos = 55;
 
-  if (project.location.mapLink) {
-    doc.setFont('helvetica', 'bold');
-    doc.text('MAP LINK:', 15, 100);
-    doc.setTextColor(primaryColor);
-    doc.text(project.location.mapLink, 50, 100, { maxWidth: 140 });
+  // Project Info
+  if (config.includeSpecs) {
     doc.setTextColor('#1f2937');
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('1. PROJECT SPECIFICATIONS', 15, yPos);
+    doc.line(15, yPos + 2, 195, yPos + 2);
+    yPos += 10;
+
+    doc.setFontSize(10);
+    doc.text('PROJECT NAME:', 15, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(project.name, 50, yPos);
+    yPos += 7;
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('CLIENT:', 15, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(client?.name || 'N/A', 50, yPos);
+    yPos += 7;
+
+    if (project.clientContactId) {
+      const contact = client?.contacts?.find(c => c.id === project.clientContactId);
+      if (contact) {
+        doc.setFont('helvetica', 'bold');
+        doc.text('CONTACT:', 15, yPos);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${contact.name} (${contact.role}) | ${contact.email} | ${contact.phone}`, 50, yPos);
+        yPos += 7;
+      }
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('CATEGORY:', 15, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(project.category, 50, yPos);
+    yPos += 7;
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('LOCATION:', 15, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.text(project.location.address, 50, yPos);
+    yPos += 7;
+
+    if (project.location.mapLink) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('MAP LINK:', 15, yPos);
+      doc.setTextColor(primaryColor);
+      doc.text(project.location.mapLink, 50, yPos, { maxWidth: 140 });
+      doc.setTextColor('#1f2937');
+      yPos += 7;
+    }
+    yPos += 5;
   }
 
   // Event Timeline
-  let yPos = 115;
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text('2. OPERATIONAL TIMELINE', 15, yPos);
-  doc.line(15, yPos + 2, 195, yPos + 2);
-  yPos += 12;
+  if (config.includeTimeline) {
+    if (yPos > 240) { doc.addPage(); yPos = 20; }
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('2. OPERATIONAL TIMELINE', 15, yPos);
+    doc.line(15, yPos + 2, 195, yPos + 2);
+    yPos += 12;
 
-  doc.setFontSize(9);
-  if (project.eventDates && project.eventDates.length > 0) {
-    project.eventDates.forEach((ed) => {
-      if (yPos > 270) { doc.addPage(); yPos = 20; }
-      doc.setFont('helvetica', 'bold');
-      doc.text(ed.label.toUpperCase() || 'PHASE', 15, yPos);
+    doc.setFontSize(9);
+    if (project.eventDates && project.eventDates.length > 0) {
+      project.eventDates.forEach((ed) => {
+        if (yPos > 270) { doc.addPage(); yPos = 20; }
+        doc.setFont('helvetica', 'bold');
+        doc.text(ed.label.toUpperCase() || 'PHASE', 15, yPos);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${formatDate(ed.date)} | ${ed.startTime} - ${ed.endTime}`, 70, yPos);
+        yPos += 7;
+      });
+    } else {
       doc.setFont('helvetica', 'normal');
-      doc.text(`${formatDate(ed.date)} | ${ed.startTime} - ${ed.endTime}`, 70, yPos);
+      doc.text(`${formatDate(project.startDate)} - ${formatDate(project.endDate)}`, 15, yPos);
       yPos += 7;
-    });
-  } else {
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${formatDate(project.startDate)} - ${formatDate(project.endDate)}`, 15, yPos);
-    yPos += 7;
+    }
+    yPos += 5;
   }
 
-  // Resource Allocation
-  yPos += 10;
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text('3. RESOURCE MATRIX', 15, yPos);
-  doc.line(15, yPos + 2, 195, yPos + 2);
-  yPos += 12;
+  // Resource Allocation - Separate Matrices
+  const resourceSections = [
+    { id: 'staff', label: '3. STAFF MATRIX', color: '#10b981', enabled: config.includeStaff },
+    { id: 'equipment', label: '4. EQUIPMENT MATRIX', color: '#3b82f6', enabled: config.includeEquipment },
+    { id: 'freelancer', label: '5. FREELANCER MATRIX', color: '#f59e0b', enabled: config.includeFreelancers },
+    { id: 'vendor_service', label: '6. VENDOR MATRIX', color: '#6b7280', enabled: config.includeVendors }
+  ];
 
-  doc.setFontSize(8);
-  doc.setFillColor(243, 244, 246);
-  doc.rect(15, yPos - 5, 180, 7, 'F');
-  doc.text('RESOURCE', 18, yPos);
-  doc.text('TYPE', 70, yPos);
-  doc.text('DESCRIPTION / ASSIGNMENT', 110, yPos);
-  yPos += 10;
+  resourceSections.filter(s => s.enabled).forEach((section) => {
+    const sectionAssignments = assignments?.filter(ass => ass.resourceType === section.id) || [];
+    if (sectionAssignments.length === 0) return;
 
-  assignments?.forEach((ass) => {
-    if (yPos > 270) {
-      doc.addPage();
-      yPos = 20;
-    }
-
-    let resourceName = 'Unknown';
-    let detail = '';
-
-    if (ass.resourceType === 'staff') {
-      resourceName = resources?.users.find(u => u.id === ass.resourceId)?.name || 'Staff';
-    } else if (ass.resourceType === 'equipment') {
-      resourceName = resources?.equipment.find(e => e.id === ass.resourceId)?.name || 'Asset';
-    } else if (ass.resourceType === 'freelancer') {
-      resourceName = resources?.freelancers.find(f => f.id === ass.resourceId)?.name || 'Freelancer';
-    } else if (ass.resourceType === 'vendor_service') {
-      const vendor = resources?.hired.find(v => v.id === ass.resourceId);
-      resourceName = vendor?.name || 'Vendor';
-      const service = vendor?.services?.find((s: any) => s.id === ass.serviceId);
-      detail = service ? `${service.name} (${service.type})` : '';
-    }
-
-    const edLabel = ass.dateId ? project.eventDates?.find(d => d.id === ass.dateId)?.label : 'Full Project';
-
-    doc.setFont('helvetica', 'bold');
-    doc.text(resourceName, 18, yPos);
-    doc.setFont('helvetica', 'normal');
-    doc.text((ass.resourceType || '').split('_').join(' ').toUpperCase(), 70, yPos);
-    doc.text(`${detail ? detail + ' | ' : ''}${edLabel || 'Assigned'}`, 110, yPos);
+    yPos += 10;
+    if (yPos > 240) { doc.addPage(); yPos = 20; }
     
-    yPos += 7;
-    doc.setDrawColor(243, 244, 246);
-    doc.line(15, yPos - 3, 195, yPos - 3);
-    yPos += 4;
+    doc.setTextColor(section.color);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text(section.label, 15, yPos);
+    doc.line(15, yPos + 2, 195, yPos + 2);
+    yPos += 10;
+
+    doc.setFontSize(8);
+    doc.setTextColor('#1f2937');
+    doc.setFillColor(243, 244, 246);
+    doc.rect(15, yPos - 5, 180, 7, 'F');
+    doc.text('RESOURCE', 18, yPos);
+    doc.text('ALLOCATION / DATE', 100, yPos);
+    doc.text('SPECIFIC DETAILS', 150, yPos);
+    yPos += 8;
+
+    sectionAssignments.forEach((ass) => {
+      if (yPos > 270) { doc.addPage(); yPos = 20; }
+
+      let resourceName = 'Unknown';
+      let detail = '-';
+
+      if (ass.resourceType === 'staff') {
+        resourceName = resources?.users.find(u => u.id === ass.resourceId)?.name || 'Staff';
+        detail = resources?.users.find(u => u.id === ass.resourceId)?.role || '-';
+      } else if (ass.resourceType === 'equipment') {
+        const item = resources?.equipment.find(e => e.id === ass.resourceId);
+        resourceName = item?.name || 'Asset';
+        detail = item?.category || '-';
+      } else if (ass.resourceType === 'freelancer') {
+        const f = resources?.freelancers.find(f => f.id === ass.resourceId);
+        resourceName = f?.name || 'Freelancer';
+        detail = f?.role || '-';
+      } else if (ass.resourceType === 'vendor_service') {
+        const v = resources?.hired.find(v => v.id === ass.resourceId);
+        resourceName = v?.name || 'Vendor';
+        const service = v?.services?.find((s: any) => s.id === ass.serviceId);
+        detail = service ? `${service.name} (${service.type})` : '-';
+      }
+
+      const edLabel = ass.dateId ? project.eventDates?.find(d => d.id === ass.dateId)?.label : 'Full Project';
+
+      doc.setFont('helvetica', 'bold');
+      doc.text(resourceName, 18, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(edLabel?.toUpperCase() || 'FULL PROJECT', 100, yPos);
+      doc.text(detail, 150, yPos);
+      
+      yPos += 7;
+      doc.setDrawColor(243, 244, 246);
+      doc.line(15, yPos - 3, 195, yPos - 3);
+      yPos += 4;
+    });
   });
 
   // Footer
@@ -282,7 +353,7 @@ const generateProjectPDF = async (project: Project, client?: Client, assignments
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setTextColor(secondaryColor);
-    doc.text(`Generated by WONDERWEB PULSE | Page ${i} of ${pageCount}`, 105, 285, { align: 'center' });
+    doc.text(`Generated by ${settings?.appName || 'WONDERWEB PULSE'} | Page ${i} of ${pageCount}`, 105, 285, { align: 'center' });
   }
 
   doc.save(`${project.name.replace(/\s+/g, '_')}_Mobilization_Brief.pdf`);
@@ -290,10 +361,10 @@ const generateProjectPDF = async (project: Project, client?: Client, assignments
 
 // --- Sub-components ---
 
-const BottomNav = ({ activeTab, setActiveTab, role }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole }) => {
+const BottomNav = ({ activeTab, setActiveTab, role, settings }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole, settings: SystemSettings | null }) => {
   const tabs = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dash', roles: ['Administrator', 'Admin', 'Manager'] as UserRole[] },
-    { id: 'inventory', icon: Warehouse, label: 'Fleet', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'inventory', icon: Warehouse, label: 'Equipment', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
     { id: 'resources', icon: Users, label: 'CRM', roles: ['Administrator', 'Admin', 'Manager'] as UserRole[] },
     { id: 'projects', icon: Briefcase, label: 'Jobs', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
     { id: 'timeclock', icon: Clock, label: 'Time', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
@@ -304,6 +375,9 @@ const BottomNav = ({ activeTab, setActiveTab, role }: { activeTab: string, setAc
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 glass-morphism border-t border-[var(--border-color)] px-2 pb-safe pt-2 z-50 rounded-t-3xl shadow-2xl">
       <div className="flex justify-around items-center max-w-lg mx-auto">
+        <div className="flex items-center justify-center p-2">
+          <PulseLogo className="w-8 h-8" logoUrl={settings?.logoUrl} />
+        </div>
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -329,10 +403,10 @@ const BottomNav = ({ activeTab, setActiveTab, role }: { activeTab: string, setAc
   );
 };
 
-const Sidebar = ({ activeTab, setActiveTab, role, onLogout }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole, onLogout: () => void }) => {
+const Sidebar = ({ activeTab, setActiveTab, role, onLogout, settings }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole, onLogout: () => void, settings: SystemSettings | null }) => {
   const tabs = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['Administrator', 'Admin', 'Manager'] as UserRole[] },
-    { id: 'inventory', icon: Warehouse, label: 'Fleet', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
+    { id: 'inventory', icon: Warehouse, label: 'Equipment', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
     { id: 'resources', icon: Users, label: 'CRM Hub', roles: ['Administrator', 'Admin', 'Manager'] as UserRole[] },
     { id: 'projects', icon: Briefcase, label: 'Projects', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
     { id: 'timeclock', icon: Clock, label: 'Time Clock', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
@@ -343,10 +417,10 @@ const Sidebar = ({ activeTab, setActiveTab, role, onLogout }: { activeTab: strin
   return (
     <aside className="hidden md:flex flex-col w-64 bg-[var(--bg-secondary)] border-r border-[var(--border-color)] h-screen sticky top-0 z-50">
       <div className="p-6 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-lg shadow-black/5 overflow-hidden">
-          <PulseLogo className="w-full h-full p-1" />
-        </div>
-        <h1 className="text-xl font-black tracking-tighter text-[var(--text-primary)]">WONDERWEB PULSE</h1>
+        <PulseLogo className="w-10 h-10 object-contain" logoUrl={settings?.logoUrl} />
+        <h1 className="text-xl font-black tracking-tighter text-[var(--text-primary)]">
+          {settings?.appName || 'WONDERWEB PULSE'}
+        </h1>
       </div>
 
       <nav className="flex-1 px-4 py-4 space-y-1">
@@ -383,14 +457,14 @@ const Sidebar = ({ activeTab, setActiveTab, role, onLogout }: { activeTab: strin
   );
 };
 
-const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser }: { title: string, user: User, theme: 'light' | 'dark', toggleTheme: () => void, onLogout?: () => void, onUpdateUser?: (updated: User) => void }) => {
+const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, settings }: { title: string, user: User, theme: 'light' | 'dark', toggleTheme: () => void, onLogout?: () => void, onUpdateUser?: (updated: User) => void, settings: SystemSettings | null }) => {
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
 
   return (
     <header className="sticky top-0 z-40 bg-[var(--bg-primary)]/80 backdrop-blur-xl px-4 md:px-8 py-4 flex justify-between items-center border-b border-[var(--border-color)]">
       <div className="flex items-center gap-4">
         <div className="md:hidden">
-           <PulseLogo className="w-8 h-8" />
+           <PulseLogo className="w-8 h-8" logoUrl={settings?.logoUrl} />
         </div>
         <div>
           <h1 className="text-lg md:text-xl font-black text-[var(--text-primary)] uppercase tracking-tight leading-none">{title}</h1>
@@ -1100,7 +1174,8 @@ const ProjectsView = ({
   onUpdateAssignments,
   onAdd, 
   onUpdate, 
-  onDelete 
+  onDelete,
+  settings
 }: { 
   role: UserRole, 
   projects: Project[],
@@ -1113,15 +1188,26 @@ const ProjectsView = ({
   onUpdateAssignments: (projectId: string, a: Omit<ProjectResourceAssignment, 'id' | 'projectId'>[]) => void,
   onAdd: (p: Omit<Project, 'id'>) => void,
   onUpdate: (p: Project) => void,
-  onDelete: (id: string) => void
+  onDelete: (id: string) => void,
+  settings: SystemSettings | null
 }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<Project['status'] | 'all'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [selectedProjectForPDF, setSelectedProjectForPDF] = useState<Project | null>(null);
+  const [pdfConfig, setPdfConfig] = useState<PDFExportConfig>({
+    includeSpecs: true,
+    includeTimeline: true,
+    includeStaff: true,
+    includeEquipment: true,
+    includeFreelancers: true,
+    includeVendors: true
+  });
 
   const [formData, setFormData] = useState<Omit<Project, 'id' | 'tasks'>>({
     name: '',
+    referenceNumber: '',
     clientId: '',
     clientContactId: '',
     category: '',
@@ -1136,7 +1222,7 @@ const ProjectsView = ({
     imageUrl: ''
   });
 
-  const [projectAssignments, setProjectAssignments] = useState<Omit<ProjectResourceAssignment, 'id' | 'projectId'>[]>([]);
+  const [projectAssignments, setProjectAssignments] = useState<(Omit<ProjectResourceAssignment, 'id' | 'projectId'> & { tempCategory?: string })[]>([]);
 
   const filteredProjects = useMemo(() => projects.filter(p => {
     const searchLower = search.toLowerCase();
@@ -1149,6 +1235,21 @@ const ProjectsView = ({
   }), [projects, search, clients, statusFilter]);
 
   const handleExportPDF = (project: Project) => {
+    setSelectedProjectForPDF(project);
+    // Reset config to all enabled
+    setPdfConfig({
+      includeSpecs: true,
+      includeTimeline: true,
+      includeStaff: true,
+      includeEquipment: true,
+      includeFreelancers: true,
+      includeVendors: true
+    });
+  };
+
+  const executeExportPDF = () => {
+    if (!selectedProjectForPDF) return;
+    const project = selectedProjectForPDF;
     const client = clients.find(c => c.id === project.clientId);
     const projAssignments = assignments.filter(a => a.projectId === project.id);
     generateProjectPDF(project, client, projAssignments, {
@@ -1156,7 +1257,8 @@ const ProjectsView = ({
       equipment,
       freelancers,
       hired: vendors
-    });
+    }, settings, pdfConfig);
+    setSelectedProjectForPDF(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1202,7 +1304,12 @@ const ProjectsView = ({
       imageUrl: project.imageUrl || '',
       tasks: project.tasks || []
     });
-    setProjectAssignments(assignments.filter(a => a.projectId === project.id).map(({id, projectId, ...rest}) => rest));
+    setProjectAssignments(assignments.filter(a => a.projectId === project.id).map(({id, projectId, ...rest}) => {
+      const tempCategory = rest.resourceType === 'equipment' 
+        ? equipment.find(e => e.id === rest.resourceId)?.category 
+        : undefined;
+      return { ...rest, tempCategory };
+    }));
     setIsModalOpen(true);
   };
 
@@ -1212,6 +1319,7 @@ const ProjectsView = ({
     setStatusFilter('all');
     setFormData({
       name: '',
+      referenceNumber: '',
       clientId: '',
       clientContactId: '',
       category: '',
@@ -1402,7 +1510,14 @@ const ProjectsView = ({
                         )}
                       </div>
                       <div>
-                        <h3 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-tight">{project.name}</h3>
+                        <div className="flex items-center gap-2">
+                           <h3 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-tight">{project.name}</h3>
+                           {project.referenceNumber && (
+                             <span className="text-[8px] bg-brand-blue/10 text-brand-blue px-1.5 py-0.5 rounded font-black uppercase tracking-widest whitespace-nowrap">
+                               {project.referenceNumber}
+                             </span>
+                           )}
+                        </div>
                         <p className="text-[9px] text-brand-blue font-black uppercase tracking-widest">
                           {client?.name} {contact ? `(${contact.name})` : ''}
                         </p>
@@ -1444,9 +1559,27 @@ const ProjectsView = ({
                           </div>
                         ))}
                       </div>
-                      <p className="text-[8px] font-black text-brand-grey uppercase tracking-widest">
-                        {projAssignments.length} assigned units
-                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { type: 'staff', label: 'Staff', color: 'text-brand-green' },
+                          { type: 'equipment', label: 'Assets', color: 'text-brand-blue' },
+                          { type: 'freelancer', label: 'Free', color: 'text-brand-orange' },
+                          { type: 'vendor_service', label: 'Vendors', color: 'text-brand-grey' }
+                        ].map(r => {
+                          const count = projAssignments.filter(a => a.resourceType === r.type).length;
+                          if (count === 0) return null;
+                          return (
+                            <span key={r.type} className={cn("text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 bg-[var(--bg-primary)] border border-[var(--border-color)]/30 rounded", r.color)}>
+                              {count} {r.label}
+                            </span>
+                          );
+                        })}
+                        {projAssignments.length === 0 && (
+                          <p className="text-[8px] font-black text-brand-grey uppercase tracking-widest">
+                            No units assigned
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <button 
@@ -1514,6 +1647,48 @@ const ProjectsView = ({
       </div>
 
       <Modal 
+        isOpen={!!selectedProjectForPDF} 
+        onClose={() => setSelectedProjectForPDF(null)} 
+        title="PDF EXPORT CONFIGURATION"
+      >
+        <div className="space-y-6">
+          <div className="p-4 bg-[var(--bg-primary)] rounded-3xl border border-[var(--border-color)] space-y-4">
+            <p className="text-[10px] font-black uppercase text-brand-blue tracking-[0.2em] mb-4 text-center">Select sections to include in the Brief:</p>
+            
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { id: 'includeSpecs', label: 'Specifications', icon: Briefcase },
+                { id: 'includeTimeline', label: 'Timeline', icon: Calendar },
+                { id: 'includeStaff', label: 'Staff Matrix', icon: Users },
+                { id: 'includeEquipment', label: 'Assets Matrix', icon: Warehouse },
+                { id: 'includeFreelancers', label: 'Freelancers', icon: UserIcon },
+                { id: 'includeVendors', label: 'Vendors Matrix', icon: Truck }
+              ].map((item) => (
+                <label key={item.id} className="flex items-center gap-3 p-3 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] hover:border-brand-blue/30 transition-all cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={(pdfConfig as any)[item.id]} 
+                    onChange={(e) => setPdfConfig({ ...pdfConfig, [item.id]: e.target.checked })}
+                    className="w-4 h-4 rounded-md border-brand-blue text-brand-blue focus:ring-brand-blue/20"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-primary)]">{item.label}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <button 
+            onClick={executeExportPDF}
+            className="w-full bg-brand-blue text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-brand-blue/20 hover:scale-[1.02] transition-all"
+          >
+            Generate Brief PDF
+          </button>
+        </div>
+      </Modal>
+
+      <Modal 
         isOpen={isModalOpen} 
         onClose={() => { setIsModalOpen(false); resetForm(); }}
         title={editingProject ? "Update Project Master" : "Initialize Project"}
@@ -1525,15 +1700,26 @@ const ProjectsView = ({
                <h4 className="text-[10px] font-black uppercase tracking-[0.2em]">Project Identity</h4>
              </div>
              <div className="space-y-4 p-4 bg-[var(--bg-primary)] rounded-3xl border border-[var(--border-color)]">
-               <div>
-                 <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Project Name</label>
-                 <input 
-                   required
-                   value={formData.name}
-                   onChange={(e) => setFormData({...formData, name: e.target.value})}
-                   className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-blue"
-                   placeholder="Event Title"
-                 />
+               <div className="grid grid-cols-2 gap-4">
+                 <div>
+                   <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Reference No.</label>
+                   <input 
+                     value={formData.referenceNumber || ''}
+                     onChange={(e) => setFormData({...formData, referenceNumber: e.target.value})}
+                     className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-blue font-mono"
+                     placeholder="REF-001"
+                   />
+                 </div>
+                 <div>
+                   <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Project Name</label>
+                   <input 
+                     required
+                     value={formData.name}
+                     onChange={(e) => setFormData({...formData, name: e.target.value})}
+                     className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-blue"
+                     placeholder="Event Title"
+                   />
+                 </div>
                </div>
                <div className="grid grid-cols-2 gap-4">
                  <div>
@@ -1684,101 +1870,145 @@ const ProjectsView = ({
              </div>
           </section>
 
-          <section className="space-y-4">
-             <div className="flex justify-between items-center px-1">
-               <div className="flex items-center gap-2 text-brand-green">
-                 <Users size={16} />
-                 <h4 className="text-[10px] font-black uppercase tracking-[0.2em]">Resource Matrix</h4>
-               </div>
-               <div className="flex gap-2">
+          {/* Separate Resource Sections */}
+          {[
+            { id: 'staff', label: 'Staff Matrix', icon: Users, color: 'text-brand-green', bgColor: 'bg-brand-green/10' },
+            { id: 'equipment', label: 'Equipment Matrix', icon: Warehouse, color: 'text-brand-blue', bgColor: 'bg-brand-blue/10' },
+            { id: 'freelancer', label: 'Freelancer Matrix', icon: UserIcon, color: 'text-brand-orange', bgColor: 'bg-brand-orange/10' },
+            { id: 'vendor_service', label: 'Vendor Matrix', icon: Truck, color: 'text-brand-grey', bgColor: 'bg-brand-grey/10' }
+          ].map((section) => (
+            <section key={section.id} className="space-y-4">
+               <div className="flex justify-between items-center px-1">
+                 <div className={cn("flex items-center gap-2", section.color)}>
+                   <section.icon size={16} />
+                   <h4 className="text-[10px] font-black uppercase tracking-[0.2em]">{section.label}</h4>
+                 </div>
                  <button 
                    type="button"
-                   onClick={() => setProjectAssignments([...projectAssignments, { resourceId: '', resourceType: 'staff' }])}
-                   className="p-1 px-2 bg-brand-green/10 text-brand-green rounded-lg text-[8px] font-black uppercase tracking-widest"
+                   onClick={() => setProjectAssignments([...projectAssignments, { resourceId: '', resourceType: section.id as any }])}
+                   className={cn("p-1 px-2 rounded-lg text-[8px] font-black uppercase tracking-widest", section.bgColor, section.color)}
                  >
-                   + Resource
+                   + {section.label.split(' ')[0]}
                  </button>
                </div>
-             </div>
-             
-             <div className="space-y-3">
-                {(projectAssignments || []).map((ass, idx) => (
-                  <div key={idx} className="flex gap-2 items-start p-3 bg-[var(--bg-primary)] rounded-xl border border-[var(--border-color)]">
-                    <div className="flex-1 space-y-2">
-                      <div className="flex gap-2">
-                        <select 
-                          value={ass.resourceType}
-                          onChange={(e) => {
+               
+               <div className="space-y-3">
+                  {projectAssignments.filter(ass => ass.resourceType === section.id).map((ass, filteredIdx) => {
+                    const originalIdx = projectAssignments.findIndex(p => p === ass);
+                    return (
+                      <div key={originalIdx} className="flex gap-2 items-start p-3 bg-[var(--bg-primary)] rounded-xl border border-[var(--border-color)]">
+                        <div className="flex-1 space-y-2">
+                            {ass.resourceType === 'equipment' && (
+                              <>
+                                <select 
+                                  value={ass.tempCategory || ''}
+                                  onChange={(e) => {
+                                    const newList = [...projectAssignments];
+                                    newList[originalIdx].tempCategory = e.target.value;
+                                    newList[originalIdx].resourceId = '';
+                                    setProjectAssignments(newList);
+                                  }}
+                                  className="w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg px-2 py-1 text-[10px] outline-none mb-2"
+                                >
+                                  <option value="">Select Category</option>
+                                  {Array.from(new Set(equipment.map(e => e.category))).sort().map(cat => (
+                                    <option key={cat} value={cat}>{cat.toUpperCase()}</option>
+                                  ))}
+                                </select>
+                                <select 
+                                  required
+                                  value={ass.resourceId}
+                                  onChange={(e) => {
+                                    const newList = [...projectAssignments];
+                                    newList[originalIdx].resourceId = e.target.value;
+                                    newList[originalIdx].serviceId = undefined;
+                                    setProjectAssignments(newList);
+                                  }}
+                                  className="w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg px-2 py-1 text-[10px] outline-none"
+                                >
+                                  <option value="">Select Equipment</option>
+                                  {equipment
+                                    .filter(e => e.category === ass.tempCategory)
+                                    .sort((a, b) => a.name.localeCompare(b.name))
+                                    .map(e => (
+                                      <option key={e.id} value={e.id}>{e.name} ({e.status})</option>
+                                    ))
+                                  }
+                                </select>
+                              </>
+                            )}
+                            {ass.resourceType !== 'equipment' && (
+                              <select 
+                                required
+                                value={ass.resourceId}
+                                onChange={(e) => {
+                                  const newList = [...projectAssignments];
+                                  newList[originalIdx].resourceId = e.target.value;
+                                  newList[originalIdx].serviceId = undefined;
+                                  setProjectAssignments(newList);
+                                }}
+                                className="w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg px-2 py-1 text-[10px] outline-none"
+                              >
+                                <option value="">Select {section.label.split(' ')[0]}</option>
+                                {ass.resourceType === 'staff' && users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                {ass.resourceType === 'vendor_service' && vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                {ass.resourceType === 'freelancer' && freelancers.map(f => <option key={f.id} value={f.id}>{f.name} ({f.role})</option>)}
+                              </select>
+                            )}
+
+                          {ass.resourceType === 'vendor_service' && ass.resourceId && (
+                            <select 
+                              required
+                              value={ass.serviceId || ''}
+                              onChange={(e) => {
+                                const newList = [...projectAssignments];
+                                newList[originalIdx].serviceId = e.target.value;
+                                setProjectAssignments(newList);
+                              }}
+                              className="w-full bg-[var(--bg-secondary)] border border-brand-green/30 rounded-lg px-2 py-1 text-[10px] outline-none"
+                            >
+                              <option value="">Select Service/Equipment</option>
+                              {(vendors.find(v => v.id === ass.resourceId)?.services || []).map(s => (
+                                <option key={s.id} value={s.id}>{s.name} ({s.type})</option>
+                              ))}
+                            </select>
+                          )}
+
+                          <select 
+                            value={ass.dateId || ''}
+                            onChange={(e) => {
+                              const newList = [...projectAssignments];
+                              newList[originalIdx].dateId = e.target.value || undefined;
+                              setProjectAssignments(newList);
+                            }}
+                            className="w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg px-2 py-1 text-[9px] outline-none"
+                          >
+                             <option value="">All Project Dates</option>
+                             {formData.eventDates.map(ed => <option key={ed.id} value={ed.id}>{ed.label} ({ed.date})</option>)}
+                          </select>
+                        </div>
+                        <button 
+                          type="button" 
+                          onClick={() => {
                             const newList = [...projectAssignments];
-                            newList[idx].resourceType = e.target.value as any;
-                            newList[idx].resourceId = '';
-                            newList[idx].serviceId = undefined;
+                            newList.splice(originalIdx, 1);
                             setProjectAssignments(newList);
-                          }}
-                          className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg px-2 py-1 text-[9px] outline-none"
+                          }} 
+                          className="text-red-500 mt-1 p-1 hover:bg-red-500/10 rounded"
                         >
-                          <option value="staff">STAFF</option>
-                          <option value="equipment">FLEET</option>
-                          <option value="vendor_service">VENDOR</option>
-                          <option value="freelancer">FREE</option>
-                        </select>
-                        <select 
-                          required
-                          value={ass.resourceId}
-                          onChange={(e) => {
-                            const newList = [...projectAssignments];
-                            newList[idx].resourceId = e.target.value;
-                            newList[idx].serviceId = undefined;
-                            setProjectAssignments(newList);
-                          }}
-                          className="flex-1 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg px-2 py-1 text-[10px] outline-none"
-                        >
-                          <option value="">Select Resource</option>
-                          {ass.resourceType === 'staff' && users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                          {ass.resourceType === 'equipment' && equipment.map(e => <option key={e.id} value={e.id}>{e.name} ({e.status})</option>)}
-                          {ass.resourceType === 'vendor_service' && vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                          {ass.resourceType === 'freelancer' && freelancers.map(f => <option key={f.id} value={f.id}>{f.name} ({f.role})</option>)}
-                        </select>
+                           <Trash2 size={16} />
+                        </button>
                       </div>
-
-                      {ass.resourceType === 'vendor_service' && ass.resourceId && (
-                        <select 
-                          required
-                          value={ass.serviceId || ''}
-                          onChange={(e) => {
-                            const newList = [...projectAssignments];
-                            newList[idx].serviceId = e.target.value;
-                            setProjectAssignments(newList);
-                          }}
-                          className="w-full bg-[var(--bg-secondary)] border border-brand-green/30 rounded-lg px-2 py-1 text-[10px] outline-none"
-                        >
-                          <option value="">Select Service/Equipment</option>
-                          {(vendors.find(v => v.id === ass.resourceId)?.services || []).map(s => (
-                            <option key={s.id} value={s.id}>{s.name} ({s.type})</option>
-                          ))}
-                        </select>
-                      )}
-
-                      <select 
-                        value={ass.dateId || ''}
-                        onChange={(e) => {
-                          const newList = [...projectAssignments];
-                          newList[idx].dateId = e.target.value || undefined;
-                          setProjectAssignments(newList);
-                        }}
-                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg px-2 py-1 text-[9px] outline-none"
-                      >
-                         <option value="">All Project Dates</option>
-                         {formData.eventDates.map(ed => <option key={ed.id} value={ed.id}>{ed.label} ({ed.date})</option>)}
-                      </select>
+                    );
+                  })}
+                  {projectAssignments.filter(ass => ass.resourceType === section.id).length === 0 && (
+                    <div className="text-center py-4 border border-dashed border-[var(--border-color)] rounded-xl">
+                      <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase tracking-widest">No {section.id.replace('_', ' ')} assigned</p>
                     </div>
-                    <button type="button" onClick={() => setProjectAssignments((projectAssignments || []).filter((_, i) => i !== idx))} className="text-red-500 mt-2">
-                       <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))}
-             </div>
-          </section>
+                  )}
+               </div>
+            </section>
+          ))}
 
           <button 
             type="submit"
@@ -1886,7 +2116,7 @@ const DashboardView = ({
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-black text-[var(--text-primary)] uppercase tracking-tight">Command Center</h2>
-          <p className="text-xs text-[var(--text-secondary)] font-medium uppercase tracking-widest mt-1">Real-time Fleet & Project Intelligence</p>
+          <p className="text-xs text-[var(--text-secondary)] font-medium uppercase tracking-widest mt-1">Real-time Equipment & Project Intelligence</p>
         </div>
         <div className="bg-brand-green/10 text-brand-green px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-brand-green/20 flex items-center gap-2 shadow-sm">
           <div className="w-1.5 h-1.5 rounded-full bg-brand-green animate-pulse" />
@@ -1942,7 +2172,7 @@ const DashboardView = ({
         <div className="precision-card p-8">
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-tight">Fleet Utilization</h3>
+              <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-tight">Equipment Utilization</h3>
               <p className="text-[9px] text-[var(--text-secondary)] font-bold uppercase tracking-[0.15em] mt-1">Weekly operational hours</p>
             </div>
             <div className="p-2 bg-[var(--bg-primary)] rounded-xl border border-[var(--border-color)]">
@@ -2161,10 +2391,7 @@ const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose:
 };
 
 const CATEGORY_MAP: Record<string, string[]> = {
-  'Machinery': ['Excavators', 'Cranes', 'Bulldozers', 'Loaders'],
-  'Heavy Machinery': ['Excavators', 'Cranes', 'Bulldozers', 'Loaders'],
-  'Power Tools': ['Drills', 'Saws', 'Generators', 'Compressors'],
-  'Vehicles': ['Trucks', 'Vans', 'Cars'],
+  'Camera': ['Mirrorless', 'Cinema', 'DSLR', 'Action', 'Lenses'],
   'Other': ['General', 'Safety', 'Misc']
 };
 
@@ -2194,7 +2421,8 @@ const InventoryView = ({
   const [isScanning, setIsScanning] = useState(false);
   const [editingItem, setEditingItem] = useState<Equipment | null>(null);
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
-  const [filter, setFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isSchedulingMaintenance, setIsSchedulingMaintenance] = useState(false);
   const [maintenanceForm, setMaintenanceForm] = useState<Partial<MaintenanceTask>>({
     title: '',
@@ -2300,12 +2528,28 @@ const InventoryView = ({
     reader.readAsText(file);
   };
 
-  const filteredEquipment = equipment.filter(item => 
-    item.name.toLowerCase().includes(search.toLowerCase()) ||
-    item.category.toLowerCase().includes(search.toLowerCase()) ||
-    (item.subCategory && item.subCategory.toLowerCase().includes(search.toLowerCase())) ||
-    item.serialNumber.toLowerCase().includes(search.toLowerCase())
-  ).filter(item => item.name.toLowerCase().includes(filter.toLowerCase()));
+  const filteredEquipment = useMemo(() => {
+    return equipment.filter(item => {
+      const searchLower = search.toLowerCase();
+      const matchesSearch = 
+        item.name.toLowerCase().includes(searchLower) ||
+        item.category.toLowerCase().includes(searchLower) ||
+        (item.subCategory && item.subCategory.toLowerCase().includes(searchLower)) ||
+        item.serialNumber.toLowerCase().includes(searchLower);
+      
+      const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
+      const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
+      
+      return matchesSearch && matchesCategory && matchesStatus;
+    });
+  }, [equipment, search, categoryFilter, statusFilter]);
+
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(equipment.map(e => e.category).filter(Boolean)));
+    return ['all', ...cats];
+  }, [equipment]);
+
+  const statuses = ['all', 'Available', 'In Use', 'Under Maintenance'];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2347,54 +2591,76 @@ const InventoryView = ({
 
   return (
     <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
-      <div className="flex gap-3">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-4 top-3 text-[var(--text-secondary)]" />
-          <input 
-            type="text" 
-            placeholder="FILTER ASSETS..." 
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors text-[var(--text-primary)]"
-          />
-        </div>
-        <button 
-          onClick={() => setIsScanning(true)}
-          className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
-        >
-          <Scan size={20} />
-        </button>
-        {(role === 'Administrator' || role === 'Admin' || role === 'Manager') && (
-          <>
-            <button 
-              onClick={handleExportCSV}
-              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
-              title="Export CSV"
-            >
-              <Download size={20} />
-            </button>
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
-              title="Import CSV"
-            >
-              <Upload size={20} />
-            </button>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap gap-3">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search size={16} className="absolute left-4 top-3 text-[var(--text-secondary)]" />
             <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleImportCSV} 
-              accept=".csv" 
-              className="hidden" 
+              type="text" 
+              placeholder="FILTER ASSETS..." 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors text-[var(--text-primary)]"
             />
-            <button 
-              onClick={() => { resetForm(); setIsModalOpen(true); }}
-              className="bg-brand-blue text-white px-4 rounded-2xl shadow-xl shadow-brand-blue/10"
+          </div>
+          <div className="flex gap-2">
+            <select 
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors appearance-none"
             >
-              <Plus size={20} />
+              {categories.map(cat => (
+                <option key={cat} value={cat}>{cat === 'all' ? 'ALL CATEGORIES' : cat.toUpperCase()}</option>
+              ))}
+            </select>
+            <select 
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors appearance-none"
+            >
+              {statuses.map(status => (
+                <option key={status} value={status}>{status === 'all' ? 'ALL STATUS' : status.toUpperCase()}</option>
+              ))}
+            </select>
+            <button 
+              onClick={() => setIsScanning(true)}
+              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
+            >
+              <Scan size={20} />
             </button>
-          </>
-        )}
+          </div>
+          {(role === 'Administrator' || role === 'Admin' || role === 'Manager') && (
+            <div className="flex gap-2">
+              <button 
+                onClick={handleExportCSV}
+                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 py-2.5 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
+                title="Export CSV"
+              >
+                <Download size={20} />
+              </button>
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 py-2.5 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
+                title="Import CSV"
+              >
+                <Upload size={20} />
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleImportCSV} 
+                accept=".csv" 
+                className="hidden" 
+              />
+              <button 
+                onClick={() => { resetForm(); setIsModalOpen(true); }}
+                className="bg-brand-blue text-white px-4 py-2.5 rounded-2xl shadow-xl shadow-brand-blue/10 flex items-center justify-center"
+              >
+                <Plus size={20} />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
 <AnimatePresence>
@@ -2625,15 +2891,12 @@ const InventoryView = ({
               placeholder="e.g. Excavator Model X"
             />
           </div>
-          <div className="space-y-1.5">
-            <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Image URL (Optional)</label>
-            <input 
-              value={formData.imageUrl || ''}
-              onChange={(e) => setFormData({...formData, imageUrl: e.target.value})}
-              className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
-              placeholder="https://example.com/image.jpg"
-            />
-          </div>
+          <ImageUpload 
+            label="Asset Photo"
+            value={formData.imageUrl || ''}
+            onChange={(val) => setFormData({...formData, imageUrl: val})}
+            maxSizeInKB={5120}
+          />
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Category</label>
@@ -2643,7 +2906,7 @@ const InventoryView = ({
                 value={formData.category}
                 onChange={(e) => setFormData({...formData, category: e.target.value})}
                 className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
-                placeholder="e.g. Machinery"
+                placeholder="e.g. Camera"
               />
               <datalist id="category-options">
                 {Array.from(new Set([
@@ -2661,13 +2924,12 @@ const InventoryView = ({
                 value={formData.subCategory || ''}
                 onChange={(e) => setFormData({...formData, subCategory: e.target.value})}
                 className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
-                placeholder="e.g. Excavators"
+                placeholder="e.g. Mirrorless"
               />
               <datalist id="subcategory-options">
                 {Array.from(new Set([
                   ...(CATEGORY_MAP[formData.category] || []),
                   ...equipment.filter(e => e.category === formData.category).map(e => e.subCategory).filter(Boolean)
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 ])).map((sub: any) => (
                   <option key={sub} value={sub} />
                 ))}
@@ -2754,8 +3016,9 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceTask[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-  const [calendarConfig, setCalendarConfig] = useState<CalendarConfig>({ workingWeekends: [6, 7], publicHolidays: [] });
+  const [calendarConfig, setCalendarConfig] = useState<CalendarConfig>({ workingWeekends: [0, 6], publicHolidays: [], forcedWorkingDates: [] });
   const [assignments, setAssignments] = useState<ProjectResourceAssignment[]>([]);
+  const [settings, setSettings] = useState<SystemSettings | null>(null);
 
   // Batch update assignments for a project
   const handleUpdateAssignments = async (projectId: string, newAssignments: Omit<ProjectResourceAssignment, 'id' | 'projectId'>[]) => {
@@ -2771,13 +3034,20 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
       await Promise.all(deletePromises);
 
       // 3. Add new assignments
-      const addPromises = newAssignments.map(ass => 
-        addDoc(collection(db, 'assignments'), {
+      const addPromises = newAssignments.map(ass => {
+        const data: any = {
           ...ass,
           projectId,
           createdAt: serverTimestamp()
-        })
-      );
+        };
+        // Firestore doesn't accept undefined values
+        Object.keys(data).forEach(key => {
+          if (data[key] === undefined) {
+            delete data[key];
+          }
+        });
+        return addDoc(collection(db, 'assignments'), data);
+      });
       await Promise.all(addPromises);
       
       console.log(`Assignments synced for project ${projectId}`);
@@ -2818,7 +3088,28 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
       });
     });
 
-    return () => unsubscribes.forEach(un => un());
+    const settingsUnsub = onSnapshot(doc(db, 'settings', 'global'), (snapshot) => {
+      if (snapshot.exists()) {
+        setSettings({ ...snapshot.data(), id: snapshot.id } as SystemSettings);
+      }
+    });
+
+    const calendarUnsub = onSnapshot(doc(db, 'settings', 'calendar'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setCalendarConfig({
+          workingWeekends: data.workingWeekends || [0, 6],
+          publicHolidays: data.publicHolidays || [],
+          forcedWorkingDates: data.forcedWorkingDates || []
+        });
+      }
+    });
+
+    return () => {
+      unsubscribes.forEach(un => un());
+      settingsUnsub();
+      calendarUnsub();
+    };
   }, []);
 
   useEffect(() => {
@@ -2889,14 +3180,24 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
     }
   };
 
+  const handleUpdateCalendarConfig = async (newConfig: CalendarConfig) => {
+    setCalendarConfig(newConfig);
+    if (!db) return;
+    try {
+      await setDoc(doc(db, 'settings', 'calendar'), newConfig, { merge: true });
+    } catch (err) {
+      console.error("Error saving calendar config:", err);
+    }
+  };
+
   const currentTitle = () => {
+    if (activeTab === 'dashboard') return settings?.appName || 'WONDERWEB PULSE';
     switch(activeTab) {
-      case 'dashboard': return 'WONDERWEB PULSE';
-      case 'inventory': return 'Fleet';
+      case 'inventory': return 'Equipment';
       case 'resources': return 'CRM Hub';
       case 'projects': return 'Projects';
       case 'timeclock': return 'Time Clock';
-      default: return 'WONDERWEB PULSE';
+      default: return settings?.appName || 'WONDERWEB PULSE';
     }
   };
 
@@ -2912,7 +3213,8 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
         role={user.role} 
-        onLogout={onLogout} 
+        onLogout={onLogout || (() => {})} 
+        settings={settings}
       />
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
@@ -2923,6 +3225,7 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
           toggleTheme={toggleTheme} 
           onLogout={onLogout} 
           onUpdateUser={handleUpdateUser} 
+          settings={settings}
         />
         
         <main className="flex-1 overflow-y-auto overflow-x-hidden md:px-8 pb-32 md:pb-8">
@@ -3005,14 +3308,17 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
               {activeTab === 'timeclock' && (
                 <TimeClockView 
                   user={user} 
+                  users={staff}
                   attendance={attendance} 
                   leaveRequests={leaveRequests}
                   calendarConfig={calendarConfig}
                   onCheckIn={async () => {
+                    const now = new Date();
                     const record = {
                       staffId: user.id,
-                      date: new Date().toISOString().split('T')[0],
-                      checkIn: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                      date: now.toISOString().split('T')[0],
+                      checkIn: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                      checkInRaw: now.toISOString(),
                       hoursWorked: 0,
                       createdAt: serverTimestamp()
                     };
@@ -3023,21 +3329,47 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                     const today = new Date().toISOString().split('T')[0];
                     const record = attendance.find(a => a.staffId === user.id && a.date === today && !a.checkOut);
                     if (record) {
-                      const checkOut = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                      await updateDoc(doc(db, 'attendance', record.id), { checkOut, hoursWorked: 8 }); 
+                      const now = new Date();
+                      const checkOut = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      const checkInDate = record.checkInRaw ? new Date(record.checkInRaw) : new Date();
+                      const hoursWorked = Math.round(((now.getTime() - checkInDate.getTime()) / (1000 * 60 * 60)) * 10) / 10;
+                      await updateDoc(doc(db, 'attendance', record.id), { checkOut, hoursWorked }); 
                       await updateDoc(doc(db, 'profiles', user.id), { checkInStatus: 'out' });
                     }
                   }}
                   onRequestLeave={async (req) => {
                     await addDoc(collection(db, 'leaveRequests'), { ...req, createdAt: serverTimestamp() });
                   }}
+                  onUpdateAttendance={async (id, data) => {
+                    await updateDoc(doc(db, 'attendance', id), data as any);
+                  }}
+                  onUpdateLeave={async (id, data) => {
+                    await updateDoc(doc(db, 'leaveRequests', id), data as any);
+                  }}
+                  onAddAttendance={async (data) => {
+                    await addDoc(collection(db, 'attendance'), { ...data, createdAt: serverTimestamp() });
+                  }}
+                  onDeleteAttendance={async (id) => {
+                    await deleteDoc(doc(db, 'attendance', id));
+                  }}
+                  onUpdateUser={async (id, data) => {
+                    try {
+                      await updateDoc(doc(db, 'profiles', id), { ...data, updatedAt: serverTimestamp() } as any);
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.UPDATE, `profiles/${id}`);
+                    }
+                  }}
                 />
               )}
               {activeTab === 'calendar' && (
-                <CalendarView projects={projects} leaveRequests={leaveRequests} assignments={assignments} />
+                <CalendarView projects={projects} leaveRequests={leaveRequests} assignments={assignments} calendarConfig={calendarConfig} user={user} />
               )}
               {activeTab === 'admin' && (
-                <AdminSettingsView config={calendarConfig} onUpdateConfig={setCalendarConfig} />
+                <AdminSettingsView 
+                  config={calendarConfig} 
+                  onUpdateConfig={handleUpdateCalendarConfig} 
+                  brandSettings={settings}
+                />
               )}
               {activeTab === 'projects' && (
                 <ProjectsView 
@@ -3053,13 +3385,19 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                   onAdd={addProject}
                   onUpdate={handleUpdateProject}
                   onDelete={handleDeleteProject}
+                  settings={settings}
                 />
               )}
             </motion.div>
           </AnimatePresence>
         </main>
 
-        <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} role={user.role} />
+        <BottomNav 
+          activeTab={activeTab} 
+          setActiveTab={setActiveTab} 
+          role={user.role} 
+          settings={settings}
+        />
       </div>
     </div>
   );

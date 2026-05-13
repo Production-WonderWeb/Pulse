@@ -46,6 +46,7 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "referenceNumber": { "type": "string" },
         "name": { "type": "string" },
         "clientId": { "type": "string" },
         "clientContactId": { "type": "string" },
@@ -101,6 +102,42 @@
         "dateId": { "type": "string" }
       },
       "required": ["id", "projectId", "resourceId", "resourceType"]
+    },
+    "SystemSettings": {
+      "title": "System Settings",
+      "description": "Global application configuration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "appName": { "type": "string" },
+        "primaryColor": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id"]
+    },
+    "CalendarConfig": {
+      "title": "Calendar Configuration",
+      "description": "Configuration for working weekends and public holidays.",
+      "type": "object",
+      "properties": {
+        "workingWeekends": { "type": "array", "items": { "type": "integer" } },
+        "publicHolidays": { 
+          "type": "array", 
+          "items": { 
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "startDate": { "type": "string" },
+              "endDate": { "type": "string" },
+              "name": { "type": "string" },
+              "description": { "type": "string" }
+            },
+            "required": ["id", "startDate", "endDate", "name"]
+          } 
+        },
+        "forcedWorkingDates": { "type": "array", "items": { "type": "string" } }
+      }
     }
   },
   "firestore": {
@@ -109,6 +146,8 @@
     "projects/{projectId}": { "schema": "Project", "description": "Projects" },
     "clients/{clientId}": { "schema": "Client", "description": "Clients" },
     "vendors/{vendorId}": { "schema": "Vendor", "description": "Vendors" },
-    "assignments/{assignmentId}": { "schema": "Assignment", "description": "Resource assignments" }
+    "assignments/{assignmentId}": { "schema": "Assignment", "description": "Resource assignments" },
+    "settings/global": { "schema": "SystemSettings", "description": "Global branding settings" },
+    "settings/calendar": { "schema": "CalendarConfig", "description": "Calendar configuration" }
   }
 }

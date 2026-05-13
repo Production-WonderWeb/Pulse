@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import App from './App';
-import { User, UserRole } from './types/index';
+import { User, UserRole, SystemSettings } from './types/index';
 import { OnboardingForm } from './components/OnboardingForm';
 import { Mail, CheckCircle, ArrowRight } from 'lucide-react';
 
@@ -79,6 +79,17 @@ const AuthWrapper = () => {
   const [userProfile, setUserProfile] = useState<User | null>(null);
   const [needsVerification, setNeedsVerification] = useState(false);
   const [resending, setResending] = useState(false);
+  const [settings, setSettings] = useState<SystemSettings | null>(null);
+
+  useEffect(() => {
+    if (!db) return;
+    const unsub = onSnapshot(doc(db, 'settings', 'global'), (snap) => {
+      if (snap.exists()) {
+        setSettings({ ...snap.data(), id: snap.id } as SystemSettings);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     let profileUnsubscribe: (() => void) | null = null;
@@ -304,34 +315,60 @@ const AuthWrapper = () => {
       <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--bg-primary)] p-4">
         <form onSubmit={handleAuth} className="w-full max-w-sm p-8 bg-[var(--bg-secondary)] rounded-3xl border border-[var(--border-color)] shadow-2xl">
           <div className="flex justify-center mb-8">
-            <div className="w-16 h-16 bg-white rounded-xl flex items-center justify-center p-2 shadow-lg shadow-black/5 overflow-hidden">
-              <img 
-                src="https://wonderweb.ae/wp-content/uploads/2023/10/WonderWebLogo-Colorful.png" 
-                alt="WonderWeb Logo" 
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  const target = e.currentTarget;
-                  // Try fallback
-                  const fallbackUrl = "https://wonderweb.ae/wp-content/uploads/2021/04/WonderWeb-Logo.png";
-                  if (target.src !== fallbackUrl) {
-                    target.src = fallbackUrl;
-                  } else {
+            <div className="relative group min-w-[6rem] min-h-[6rem] flex items-center justify-center">
+              {settings?.logoUrl ? (
+                <img 
+                  src={settings.logoUrl} 
+                  alt="Logo" 
+                  className="w-24 h-24 object-contain"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    const target = e.currentTarget;
                     target.style.display = 'none';
                     const parent = target.parentElement;
                     if (parent) {
                       const fallback = document.createElement('div');
-                      fallback.className = 'w-full h-full flex items-center justify-center bg-brand-blue text-white font-black text-xl';
-                      fallback.innerText = 'W';
+                      fallback.className = 'w-24 h-24 flex items-center justify-center bg-brand-blue/10 text-brand-blue font-black text-4xl rounded-2xl';
+                      fallback.innerText = 'WW';
                       parent.appendChild(fallback);
                     }
-                  }
-                }}
-              />
+                  }}
+                />
+              ) : (
+                <img 
+                  src="https://wonderweb.ae/wp-content/uploads/2023/10/cropped-WonderWebLogo-Colorful-192x192.png" 
+                  alt="WonderWeb Logo" 
+                  className="w-24 h-24 object-contain"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    const fallbacks = [
+                      "https://wonderweb.ae/wp-content/uploads/2023/10/WonderWebLogo-Colorful.png",
+                      "https://wonderweb.ae/wp-content/uploads/2021/04/WonderWeb-Logo.png",
+                      "https://wonderweb.ae/wp-content/uploads/2023/10/cropped-WW-Favicon-192x192.png"
+                    ];
+                    
+                    const currentIdx = fallbacks.indexOf(target.src);
+                    if (currentIdx < fallbacks.length - 1) {
+                      target.src = fallbacks[currentIdx + 1];
+                    } else {
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent) {
+                        const fallback = document.createElement('div');
+                        fallback.className = 'w-24 h-24 flex items-center justify-center bg-brand-blue/10 text-brand-blue font-black text-4xl rounded-2xl';
+                        fallback.innerText = 'WW';
+                        parent.appendChild(fallback);
+                      }
+                    }
+                  }}
+                />
+              )}
             </div>
           </div>
-          <h2 className="text-2xl font-black text-center mb-2 uppercase tracking-tight">{isSignUp ? 'New Account' : 'Welcome Back'}</h2>
+            <h2 className="text-2xl font-black text-center mb-2 uppercase tracking-tight">{isSignUp ? 'New Account' : 'Establish Link'}</h2>
           <p className="text-[10px] text-[var(--text-secondary)] font-black uppercase tracking-[0.2em] text-center mb-8">
-            {isSignUp ? 'WonderWeb Initialization' : 'Authentication Required'}
+            {settings?.appName || 'WONDERWEB PULSE'} COMMAND SYSTEM
           </p>
           
           {error && (
@@ -427,7 +464,7 @@ const AuthWrapper = () => {
           </div>
         </form>
         <p className="mt-8 text-[10px] text-[var(--text-secondary)] uppercase tracking-[0.2em] font-black">
-          WONDERWEB PULSE COMMAND SYSTEM
+          {settings?.appName || 'WONDERWEB PULSE'} COMMAND SYSTEM
         </p>
       </div>
     );
