@@ -66,6 +66,7 @@ import {
 } from 'recharts';
 import { X, Trash2, Edit3, Save, Scan, Upload } from 'lucide-react';
 import { GanttChart } from './components/GanttChart';
+import { ImageUpload } from './components/ImageUpload';
 import { TimeClockView } from './components/TimeClockView';
 import { AdminSettingsView } from './components/AdminSettingsView';
 import { CalendarView } from './components/CalendarView';
@@ -446,17 +447,15 @@ const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser }: { t
       {showRoleSwitcher && (
         <div className="absolute top-16 right-4 md:right-8 bg-[var(--bg-secondary)] shadow-2xl border border-[var(--border-color)] rounded-2xl p-2 z-50 w-64 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="p-3 border-b border-[var(--border-color)]">
-             <label className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest block mb-2">Avatar URL</label>
-             <input 
-               type="text"
+             <ImageUpload 
+               label="Profile Avatar"
                value={user.imageUrl || ''}
-               onChange={(e) => {
+               onChange={(val) => {
                   if (onUpdateUser) {
-                    onUpdateUser({ ...user, imageUrl: e.target.value });
+                    onUpdateUser({ ...user, imageUrl: val });
                   }
                }}
-               className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-xs outline-none focus:border-brand-blue"
-               placeholder="https://example.com/me.png"
+               maxSizeInKB={5120}
              />
           </div>
           <div className="pt-2 border-t border-[var(--border-color)] md:hidden">
@@ -886,15 +885,12 @@ const ResourcesView = ({
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Avatar Image URL</label>
-                <input 
-                  value={staffForm.imageUrl}
-                  onChange={(e) => setStaffForm({...staffForm, imageUrl: e.target.value})}
-                  placeholder="https://example.com/photo.jpg"
-                  className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
-                />
-              </div>
+              <ImageUpload 
+                label="Staff Avatar"
+                value={staffForm.imageUrl}
+                onChange={(val) => setStaffForm({...staffForm, imageUrl: val})}
+                maxSizeInKB={5120}
+              />
             </div>
           )}
 
@@ -1590,39 +1586,13 @@ const ProjectsView = ({
                     />
                   </div>
                </div>
-               <div>
-                 <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Logo / Image URL</label>
-                 <div className="flex gap-2 items-center">
-                   <input 
-                     value={formData.imageUrl || ''}
-                     onChange={(e) => setFormData({...formData, imageUrl: e.target.value})}
-                     className="flex-1 bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none"
-                     placeholder="https://example.com/logo.png"
-                   />
-                   <input 
-                     type="file"
-                     accept="image/*"
-                     id="projectImageUpload"
-                     className="hidden"
-                     onChange={(e) => {
-                       const file = e.target.files?.[0];
-                       if (file) {
-                         const reader = new FileReader();
-                         reader.onloadend = () => {
-                           setFormData({...formData, imageUrl: reader.result as string});
-                         };
-                         reader.readAsDataURL(file);
-                       }
-                     }}
-                   />
-                   <label 
-                     htmlFor="projectImageUpload"
-                     className="px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl text-xs cursor-pointer hover:border-brand-blue"
-                   >
-                     Upload
-                   </label>
-                 </div>
-               </div>
+               <ImageUpload 
+                 label="Project Logo / Hero Image"
+                 value={formData.imageUrl || ''}
+                 onChange={(val) => setFormData({...formData, imageUrl: val})}
+                 aspectRatio="video"
+                 maxSizeInKB={5120}
+               />
                <div className="space-y-3">
                   <div>
                     <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Site Address</label>
