@@ -3312,10 +3312,11 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                   attendance={attendance} 
                   leaveRequests={leaveRequests}
                   calendarConfig={calendarConfig}
-                  onCheckIn={async () => {
+                  onCheckIn={async (staffId) => {
+                    const sid = staffId || user.id;
                     const now = new Date();
                     const record = {
-                      staffId: user.id,
+                      staffId: sid,
                       date: now.toISOString().split('T')[0],
                       checkIn: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                       checkInRaw: now.toISOString(),
@@ -3323,18 +3324,25 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                       createdAt: serverTimestamp()
                     };
                     await addDoc(collection(db, 'attendance'), record);
-                    await updateDoc(doc(db, 'profiles', user.id), { checkInStatus: 'in', lastCheckIn: record.checkIn });
+                    await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'in', lastCheckIn: record.checkIn });
                   }}
-                  onCheckOut={async () => {
-                    const today = new Date().toISOString().split('T')[0];
-                    const record = attendance.find(a => a.staffId === user.id && a.date === today && !a.checkOut);
+                  onCheckOut={async (staffId) => {
+                    const sid = staffId || user.id;
+                    // Find the most recent record with no check-out for this user
+                    const record = [...attendance]
+                      .filter(a => a.staffId === sid && !a.checkOut)
+                      .sort((a, b) => b.date.localeCompare(a.date))[0];
+
                     if (record) {
                       const now = new Date();
                       const checkOut = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                      const checkInDate = record.checkInRaw ? new Date(record.checkInRaw) : new Date();
+                      const checkInDate = record.checkInRaw ? new Date(record.checkInRaw) : new Date(record.date + 'T09:00:00');
                       const hoursWorked = Math.round(((now.getTime() - checkInDate.getTime()) / (1000 * 60 * 60)) * 10) / 10;
                       await updateDoc(doc(db, 'attendance', record.id), { checkOut, hoursWorked }); 
-                      await updateDoc(doc(db, 'profiles', user.id), { checkInStatus: 'out' });
+                      await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'out' });
+                    } else {
+                      // Fallback: if no active record found, just reset status
+                      await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'out' });
                     }
                   }}
                   onRequestLeave={async (req) => {

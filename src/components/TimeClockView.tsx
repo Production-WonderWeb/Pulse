@@ -9,8 +9,8 @@ interface Props {
   attendance: AttendanceRecord[];
   leaveRequests: LeaveRequest[];
   calendarConfig: CalendarConfig;
-  onCheckIn: () => void;
-  onCheckOut: () => void;
+  onCheckIn: (staffId?: string) => void;
+  onCheckOut: (staffId?: string) => void;
   onRequestLeave: (request: Omit<LeaveRequest, 'id'>) => void;
   onUpdateAttendance?: (id: string, data: Partial<AttendanceRecord>) => void;
   onAddAttendance?: (data: Omit<AttendanceRecord, 'id' | 'createdAt'>) => void;
@@ -57,11 +57,57 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
     });
   }, [targetUser.id, targetUser.yearlyLeaveDays, targetUser.remainingCompOff, targetUser.standardWorkingHours]);
 
-  const myAttendance = attendance.filter(a => a.staffId === targetUser.id);
+  const myAttendance = attendance
+    .filter(a => a.staffId === targetUser.id)
+    .sort((a, b) => a.date.localeCompare(b.date));
   const myLeaves = leaveRequests.filter(l => l.staffId === targetUser.id);
 
   // Stats calculations
   const targetStdHours = targetUser.standardWorkingHours || 9;
+  
+  // Calculate expected hours for the current month
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfToday = new Date();
+  
+  let expectedMonthHours = 0;
+  let dIter = new Date(startOfMonth);
+  while (dIter <= endOfToday) {
+    const dateStr = dIter.toISOString().split('T')[0];
+    const dayOfWeek = dIter.getDay();
+    
+    // Check if it's a work day
+    const isPublicHoliday = (calendarConfig.publicHolidays || []).some(h => 
+      dateStr >= h.startDate && dateStr <= h.endDate
+    );
+    const isWeekend = (calendarConfig.workingWeekends || [0, 6]).includes(dayOfWeek);
+    const isForcedWorking = (calendarConfig.forcedWorkingDates || []).includes(dateStr);
+    
+    const isWorkDay = (!isPublicHoliday && (!isWeekend || isForcedWorking));
+    
+    if (isWorkDay) {
+      // Check if there's a bulk/individual override for standard hours on this day
+      const record = myAttendance.find(a => a.date === dateStr);
+      expectedMonthHours += record?.standardHours ?? targetStdHours;
+    } else {
+      // Even if not a work day, if there's a record, it might have standard hours? 
+      // Usually not, but if someone worked a weekend by choice, standard hours is 0 unless forced.
+      const record = myAttendance.find(a => a.date === dateStr);
+      if (record && record.standardHours) {
+        expectedMonthHours += record.standardHours;
+      }
+    }
+    
+    dIter.setDate(dIter.getDate() + 1);
+  }
+
+  const actualMonthHours = myAttendance
+    .filter(a => {
+      const d = new Date(a.date);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    })
+    .reduce((sum, a) => sum + a.hoursWorked, 0);
+
   const extraHours = myAttendance.reduce((sum, a) => sum + Math.max(0, a.hoursWorked - (a.standardHours ?? targetStdHours)), 0);
   const lessHours = myAttendance.reduce((sum, a) => sum + (a.checkOut ? Math.max(0, (a.standardHours ?? targetStdHours) - a.hoursWorked) : 0), 0);
   const netHours = extraHours - lessHours;
@@ -153,15 +199,6 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
         const existing = attendance.find(a => a.staffId === u.id && a.date === dateStr);
         if (existing && onUpdateAttendance) {
           onUpdateAttendance(existing.id, { standardHours: bulkForm.standardHours });
-        } else if (onAddAttendance) {
-          onAddAttendance({
-            staffId: u.id,
-            date: dateStr,
-            checkIn: '00:00',
-            checkOut: '00:00',
-            hoursWorked: 0,
-            standardHours: bulkForm.standardHours
-          });
         }
       });
     });
@@ -226,11 +263,17 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
           <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-1">
             {netHours > 0 ? 'Over-time' : netHours < 0 ? 'Under-time' : 'Time Balance'}
           </p>
-          <div className="flex items-center gap-2">
-            <p className={`text-2xl font-black ${netHours > 0 ? 'text-green-500' : netHours < 0 ? 'text-red-500' : 'text-[var(--text-primary)]'}`}>
-              {Math.abs(netHours).toFixed(1)}
-            </p>
-            <span className="text-[9px] font-black text-[var(--text-secondary)] uppercase">Hrs</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <p className={`text-2xl font-black ${netHours > 0 ? 'text-green-500' : netHours < 0 ? 'text-red-500' : 'text-[var(--text-primary)]'}`}>
+                {Math.abs(netHours).toFixed(1)}
+              </p>
+              <span className="text-[9px] font-black text-[var(--text-secondary)] uppercase">Hrs</span>
+            </div>
+            <div className="text-right">
+              <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Month Expected: <span className="text-[var(--text-primary)]">{expectedMonthHours.toFixed(1)}</span></p>
+              <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Month Actual: <span className="text-[var(--text-primary)]">{actualMonthHours.toFixed(1)}</span></p>
+            </div>
           </div>
         </div>
 
@@ -308,21 +351,23 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
         </div>
       </div>
 
-      {/* Clock Actions - Only functional for self */}
-      {isViewingSelf && (
+      {/* Clock Actions - Only functional for self or admin */}
+      {(isViewingSelf || isAdminView) && (
         <div className="bg-[var(--bg-secondary)] p-6 rounded-3xl border border-[var(--border-color)]">
-          <h2 className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-[0.2em] mb-4">Clock Actions</h2>
+          <h2 className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-[0.2em] mb-4">
+            Clock Actions {isAdminView && !isViewingSelf && `for ${targetUser.name}`}
+          </h2>
           <div className="flex gap-4">
             <button 
-             onClick={onCheckIn}
-             disabled={user.checkInStatus === 'in'}
+             onClick={() => onCheckIn(targetUser.id)}
+             disabled={targetUser.checkInStatus === 'in'}
              className="flex-1 py-4 bg-[var(--bg-primary)] text-[10px] font-black uppercase tracking-widest rounded-2xl border border-[var(--border-color)] hover:border-brand-blue/30 transition-all disabled:opacity-50"
             >
               Check In
             </button>
             <button 
-             onClick={onCheckOut}
-             disabled={user.checkInStatus === 'out'}
+             onClick={() => onCheckOut(targetUser.id)}
+             disabled={targetUser.checkInStatus === 'out'}
              className="flex-1 py-4 bg-brand-orange text-white text-[10px] font-black uppercase tracking-widest rounded-2xl border border-transparent shadow-lg shadow-brand-orange/20 hover:scale-105 transition-all disabled:opacity-50"
             >
               Check Out
