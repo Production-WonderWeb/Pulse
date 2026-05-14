@@ -143,7 +143,7 @@ export interface Project {
   imageUrl?: string;
 }
 
-export interface Notification {
+export interface AppNotification {
   id: string;
   userId: string;
   title: string;

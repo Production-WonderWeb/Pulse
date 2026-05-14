@@ -111,13 +111,12 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], currentUserEm
     if (onLeave) return 0;
 
     const isBasicWorkDay = !isPublicHoliday && !isWeekend;
-    const isOverriddenToWork = (isPublicHoliday || isWeekend) && (isForcedWorking || (record?.standardHours ?? 0) > 0);
 
     if (isBasicWorkDay) {
       return record?.standardHours ?? targetStdHours;
     }
     
-    if (isOverriddenToWork) {
+    if (isForcedWorking) {
       return record?.standardHours ?? targetStdHours;
     }
 
@@ -248,8 +247,21 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], currentUserEm
     const records = attendance.filter(a => a.staffId === targetUser.id && (a.hoursWorked || 0) > 0);
     for (const record of records) {
       if (!record.date) continue;
-      // If expected hours were 0 but they worked, they earn 1 comp off day
-      if (getExpectedHours(record.date, record) === 0) {
+      
+      const [y, m, day] = record.date.split('-').map(Number);
+      const d = new Date(y, m - 1, day, 12, 0, 0);
+      const isPublicHoliday = (calendarConfig.publicHolidays || []).some(h => 
+        record.date >= h.startDate && record.date <= h.endDate
+      );
+      const isWeekendDays = (calendarConfig.workingWeekends && calendarConfig.workingWeekends.length > 0) 
+        ? calendarConfig.workingWeekends 
+        : [0, 6];
+      const isWeekend = isWeekendDays.includes(d.getDay());
+      const isForcedWorking = (calendarConfig.forcedWorkingDates || []).includes(record.date);
+
+      // If it's a weekend or holiday AND it's not a forced working date for everyone,
+      // any hours worked count as a comp off day earned.
+      if ((isWeekend || isPublicHoliday) && !isForcedWorking) {
         earned += 1;
       }
     }

@@ -92,7 +92,8 @@ import {
   LeaveType,
   LeaveStatus,
   SystemSettings,
-  PDFExportConfig
+  PDFExportConfig,
+  AppNotification
 } from './types/index';
 import { cn, formatDate } from './lib/utils';
 
@@ -473,7 +474,7 @@ const Sidebar = ({ activeTab, setActiveTab, role, onLogout, settings, userEmail 
   );
 };
 
-const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, settings, notifications = [], onMarkNotificationRead }: { title: string, user: User, theme: 'light' | 'dark', toggleTheme: () => void, onLogout?: () => void, onUpdateUser?: (updated: User) => void, settings: SystemSettings | null, notifications?: Notification[], onMarkNotificationRead?: (id: string) => void }) => {
+const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, settings, notifications = [], onMarkNotificationRead }: { title: string, user: User, theme: 'light' | 'dark', toggleTheme: () => void, onLogout?: () => void, onUpdateUser?: (updated: User) => void, settings: SystemSettings | null, notifications?: AppNotification[], onMarkNotificationRead?: (id: string) => void }) => {
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -3167,7 +3168,7 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
   const [calendarConfig, setCalendarConfig] = useState<CalendarConfig>({ workingWeekends: [0, 6], publicHolidays: [], forcedWorkingDates: [] });
   const [assignments, setAssignments] = useState<ProjectResourceAssignment[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   // Batch update assignments for a project
   const handleUpdateAssignments = async (projectId: string, newAssignments: Omit<ProjectResourceAssignment, 'id' | 'projectId'>[]) => {
@@ -3193,8 +3194,8 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
       });
       await Promise.all(addPromises);
       
-      const oldStaffIds = assignments.filter(a => a.projectId === projectId && a.type === 'staff').map(a => a.resourceId);
-      const newStaffIds = newAssignments.filter(a => a.type === 'staff').map(a => a.resourceId);
+      const oldStaffIds = assignments.filter(a => a.projectId === projectId && a.resourceType === 'staff').map(a => a.resourceId);
+      const newStaffIds = newAssignments.filter(a => a.resourceType === 'staff').map(a => a.resourceId);
       const addedStaff = newStaffIds.filter(id => !oldStaffIds.includes(id));
 
       if (addedStaff.length > 0) {
