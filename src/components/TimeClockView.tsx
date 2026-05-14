@@ -133,7 +133,12 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], currentUserEm
     const record = myAttendance.find(a => a.date === dateStr);
     const hasAttendance = record && record.checkIn !== 'OVERRIDE';
     
-    const dayTarget = getExpectedHours(dateStr, record);
+    let dayTarget = getExpectedHours(dateStr, record);
+    
+    if (dayTarget === 0 && hasAttendance && (record.hoursWorked || 0) > 0) {
+      dayTarget = record.standardHours ?? targetStdHours;
+    }
+
     fullMonthTarget += dayTarget;
     
     if (hasAttendance) {

@@ -63,7 +63,11 @@ async function testConnection() {
     await getDocFromServer(doc(db, 'test', 'connection'));
     console.log("Backend services connected successfully.");
   } catch (error) {
-    handleFirestoreError(error, OperationType.GET, 'test/connection');
+    if (error instanceof Error && (error.message.includes('offline') || error.message.includes('Could not reach'))) {
+      console.error("Please check your Firebase configuration or network connection.");
+    } else {
+      console.error("Backend connection test failed:", error);
+    }
   }
 }
 testConnection();
