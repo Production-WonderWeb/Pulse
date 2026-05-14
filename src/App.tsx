@@ -21,7 +21,7 @@ import {
 import { db, auth, handleFirestoreError, OperationType } from './lib/firebase';
 import { 
   LayoutDashboard, 
-  Warehouse,e 
+  Warehouse, 
   Briefcase, 
   Clock, 
   Calendar, 
