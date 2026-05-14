@@ -3367,6 +3367,9 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                   onUpdateLeave={async (id, data) => {
                     await updateDoc(doc(db, 'leaveRequests', id), data as any);
                   }}
+                  onDeleteLeave={async (id) => {
+                    await deleteDoc(doc(db, 'leaveRequests', id));
+                  }}
                   onAddAttendance={async (data) => {
                     await addDoc(collection(db, 'attendance'), { ...data, createdAt: serverTimestamp() });
                   }}

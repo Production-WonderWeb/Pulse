@@ -17,10 +17,11 @@ interface Props {
   onAddAttendance?: (data: Omit<AttendanceRecord, 'id' | 'createdAt'>) => void;
   onDeleteAttendance?: (id: string) => void;
   onUpdateLeave?: (id: string, data: Partial<LeaveRequest>) => void;
+  onDeleteLeave?: (id: string) => void;
   onUpdateUser?: (id: string, data: Partial<User>) => void;
 }
 
-export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, leaveRequests, calendarConfig, onCheckIn, onCheckOut, onRequestLeave, onUpdateAttendance, onAddAttendance, onDeleteAttendance, onUpdateLeave, onUpdateUser }) => {
+export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, leaveRequests, calendarConfig, onCheckIn, onCheckOut, onRequestLeave, onUpdateAttendance, onAddAttendance, onDeleteAttendance, onUpdateLeave, onDeleteLeave, onUpdateUser }) => {
   const [activeTab, setActiveTab] = useState<'attendance' | 'leave'>('attendance');
   const [isRequestingLeave, setIsRequestingLeave] = useState(false);
   const [newLeave, setNewLeave] = useState<Omit<LeaveRequest, 'id' | 'staffId' | 'status'>>({
@@ -194,10 +195,26 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
       d.setDate(d.getDate() + 1);
     }
 
+    const totalExpectedHours = rows.reduce((sum, r) => sum + parseFloat(r[5]), 0);
+    const totalActualWorked = rows.reduce((sum, r) => sum + parseFloat(r[4]), 0);
+    const totalExtra = rows.reduce((sum, r) => sum + parseFloat(r[7]), 0);
+    const netBalance = totalActualWorked - totalExpectedHours;
+
+    const summaryRows = [
+      [],
+      ['SUMMARY'],
+      ['Total Expected Hours', totalExpectedHours.toFixed(2)],
+      ['Total Actual Worked', totalActualWorked.toFixed(2)],
+      ['Total Extra (OT)', totalExtra.toFixed(2)],
+      ['Net Balance', netBalance.toFixed(2)],
+      ['Approved Leaves (Days)', usedAnnualLeaveDays]
+    ];
+
     const csvContent = [
       `Attendance Report - ${targetUser.name} - ${format(now, 'MMMM yyyy')}`,
       headers.join(','),
-      ...rows.map(r => r.map(c => `"${c}"`).join(','))
+      ...rows.map(r => r.map(c => `"${c}"`).join(',')),
+      ...summaryRows.map(r => r.map(c => `"${c}"`).join(','))
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -296,23 +313,35 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
     // We'll update their 'standardWorkingHours' via user limits if applyToAll is requested,
     // but the prompt is specifically about from-to dates, so updating records is safest.
     dateStrings.forEach(dateStr => {
-      targetUsers.forEach(u => {
-        const existing = attendance.find(a => a.staffId === u.id && a.date === dateStr);
-        if (existing && onUpdateAttendance) {
-          onUpdateAttendance(existing.id, { standardHours: bulkForm.standardHours });
-        } else if (onAddAttendance) {
-          // Create a "standard hours override" record even if they haven't clocked in yet
-          // Use 'OVERRIDE' as a marker so it doesn't count as a real attendance check-in
-          onAddAttendance({
-            staffId: u.id,
-            date: dateStr,
-            checkIn: 'OVERRIDE',
-            checkOut: 'OVERRIDE',
-            hoursWorked: 0,
-            standardHours: bulkForm.standardHours
-          });
-        }
-      });
+      const dCheck = new Date(dateStr);
+      const isWeekendDays = (calendarConfig.workingWeekends && calendarConfig.workingWeekends.length > 0) 
+        ? calendarConfig.workingWeekends 
+        : [0, 6];
+      const isWeekend = isWeekendDays.includes(dCheck.getDay());
+      const isPublicHoliday = (calendarConfig.publicHolidays || []).some(h => 
+        dateStr >= h.startDate && dateStr <= h.endDate
+      );
+
+      // Only apply bulk update to normal work days, or if the target hours is 0 (to clear overrides)
+      if ((!isWeekend && !isPublicHoliday) || bulkForm.standardHours === 0) {
+        targetUsers.forEach(u => {
+          const existing = attendance.find(a => a.staffId === u.id && a.date === dateStr);
+          if (existing && onUpdateAttendance) {
+            onUpdateAttendance(existing.id, { standardHours: bulkForm.standardHours });
+          } else if (onAddAttendance && bulkForm.standardHours !== targetStdHours) {
+            // Create a "standard hours override" record even if they haven't clocked in yet
+            // Use 'OVERRIDE' as a marker so it doesn't count as a real attendance check-in
+            onAddAttendance({
+              staffId: u.id,
+              date: dateStr,
+              checkIn: 'OVERRIDE',
+              checkOut: 'OVERRIDE',
+              hoursWorked: 0,
+              standardHours: bulkForm.standardHours
+            });
+          }
+        });
+      }
     });
     setIsBulkUpdating(false);
   };
@@ -369,29 +398,39 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        {/* Time Balance */}
-        <div className="bg-[var(--bg-secondary)] p-4 rounded-3xl border border-[var(--border-color)]">
-          <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-1">
-            {netHours > 0 ? 'Over-time' : netHours < 0 ? 'Under-time' : 'Time Balance'}
-          </p>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <p className={`text-2xl font-black ${netHours > 0 ? 'text-green-500' : netHours < 0 ? 'text-red-500' : 'text-[var(--text-primary)]'}`}>
-                {Math.abs(netHours).toFixed(1)}
-              </p>
-              <span className="text-[9px] font-black text-[var(--text-secondary)] uppercase">Hrs</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Monthly Summary Box */}
+        <div className="bg-[var(--bg-secondary)] p-5 rounded-3xl border border-[var(--border-color)] flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <h2 className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-[0.2em] mb-1">Target Summary</h2>
+              <p className="text-sm font-black text-[var(--text-primary)] uppercase">{format(now, 'MMMM')}</p>
             </div>
-            <div className="text-right">
-              <p className="text-[7px] font-black text-[var(--text-secondary)] uppercase" title="Total mandatory working hours for this month">Full Month Target: <span className="text-[var(--text-primary)]">{expectedMonthHours.toFixed(1)}</span></p>
-              <p className="text-[7px] font-black text-[var(--text-secondary)] uppercase" title="Sum of standard hours for days you actually worked">Target worked: <span className="text-[var(--text-primary)]">{expectedActuallyWorkedHoursTotal.toFixed(1)}</span></p>
-              <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Month Total: <span className="text-brand-blue font-black">{actualMonthHours.toFixed(1)}</span></p>
+            <div className="p-2 bg-brand-blue/10 rounded-xl text-brand-blue">
+              <Clock size={16} />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center py-1 border-b border-[var(--border-color)]/30">
+              <span className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Target</span>
+              <span className="text-xs font-black">{expectedMonthHours.toFixed(1)} hrs</span>
+            </div>
+            <div className="flex justify-between items-center py-1 border-b border-[var(--border-color)]/30">
+              <span className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Worked</span>
+              <span className="text-xs font-black text-brand-blue">{expectedActuallyWorkedHoursTotal.toFixed(1)} hrs</span>
+            </div>
+             <div className="flex justify-between items-center py-1">
+              <span className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Diff</span>
+              <span className={`text-xs font-black ${expectedActuallyWorkedHoursTotal >= expectedMonthHours ? 'text-green-500' : 'text-brand-orange'}`}>
+                {(expectedActuallyWorkedHoursTotal - expectedMonthHours).toFixed(1)} hrs
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Leave Balance Box - Shifted and Multi-functional */}
-        <div className="bg-[var(--bg-secondary)] p-4 rounded-3xl border border-[var(--border-color)] flex flex-col justify-between group relative">
+        {/* Leave Balance Box */}
+        <div className="bg-[var(--bg-secondary)] p-5 rounded-3xl border border-[var(--border-color)] flex flex-col justify-between group relative">
           {isAdminView && (
             <button 
               onClick={() => setIsEditingLimits(!isEditingLimits)}
@@ -830,19 +869,42 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
                   )}
                 </div>
                 
-                {isAdminView && l.status === LeaveStatus.PENDING && (
+                {isAdminView && (
                   <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-0 border-[var(--border-color)]">
+                    {l.status !== LeaveStatus.APPROVED && (
+                      <button 
+                        onClick={() => onUpdateLeave?.(l.id, { status: LeaveStatus.APPROVED })}
+                        className="flex-1 sm:flex-none px-3 py-1.5 bg-green-500/10 text-green-500 hover:bg-green-500/20 text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Check size={12} /> Approve
+                      </button>
+                    )}
+                    {l.status !== LeaveStatus.REJECTED && (
+                      <button 
+                        onClick={() => onUpdateLeave?.(l.id, { status: LeaveStatus.REJECTED })}
+                        className="flex-1 sm:flex-none px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <X size={12} /> Reject
+                      </button>
+                    )}
+                    {l.status !== LeaveStatus.PENDING && (
+                      <button 
+                        onClick={() => onUpdateLeave?.(l.id, { status: LeaveStatus.PENDING })}
+                        className="flex-1 sm:flex-none px-3 py-1.5 bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center justify-center gap-1 transition-colors"
+                        title="Set to Pending"
+                      >
+                        <Clock size={12} />
+                      </button>
+                    )}
                     <button 
-                      onClick={() => onUpdateLeave?.(l.id, { status: LeaveStatus.APPROVED })}
-                      className="flex-1 sm:flex-none px-3 py-1.5 bg-green-500/10 text-green-500 hover:bg-green-500/20 text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center justify-center gap-1 transition-colors"
+                      onClick={() => {
+                        if (window.confirm('Delete this leave request?')) {
+                          onDeleteLeave?.(l.id);
+                        }
+                      }}
+                      className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg"
                     >
-                      <Check size={12} /> Approve
-                    </button>
-                    <button 
-                      onClick={() => onUpdateLeave?.(l.id, { status: LeaveStatus.REJECTED })}
-                      className="flex-1 sm:flex-none px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center justify-center gap-1 transition-colors"
-                    >
-                      <X size={12} /> Reject
+                      <Trash2 size={12} />
                     </button>
                   </div>
                 )}
