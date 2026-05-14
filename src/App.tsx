@@ -21,7 +21,7 @@ import {
 import { db, auth, handleFirestoreError, OperationType } from './lib/firebase';
 import { 
   LayoutDashboard, 
-  Warehouse, 
+  Warehouse,e 
   Briefcase, 
   Clock, 
   Calendar, 
@@ -361,16 +361,24 @@ const generateProjectPDF = async (project: Project, client?: Client, assignments
 
 // --- Sub-components ---
 
-const BottomNav = ({ activeTab, setActiveTab, role, settings }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole, settings: SystemSettings | null }) => {
+const BottomNav = ({ activeTab, setActiveTab, role, settings, userEmail }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole, settings: SystemSettings | null, userEmail?: string }) => {
+  const roleLower = (role || 'staff').toLowerCase();
+  const isAdmin = roleLower.includes('admin') || userEmail?.toLowerCase() === 'production@wonderweb.ae';
+  const isManager = roleLower.includes('manager') || isAdmin;
+  
   const tabs = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Dash', roles: ['Administrator', 'Admin', 'Manager'] as UserRole[] },
-    { id: 'inventory', icon: Warehouse, label: 'Equipment', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'resources', icon: Users, label: 'CRM', roles: ['Administrator', 'Admin', 'Manager'] as UserRole[] },
-    { id: 'projects', icon: Briefcase, label: 'Jobs', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'timeclock', icon: Clock, label: 'Time', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'calendar', icon: Calendar, label: 'Cal', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'admin', icon: Settings, label: 'Adm', roles: ['Administrator', 'Admin'] as UserRole[] },
-  ].filter(t => t.roles.includes(role));
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Dash', roles: ['administrator', 'admin', 'manager'] },
+    { id: 'inventory', icon: Warehouse, label: 'Equipment', roles: ['administrator', 'admin', 'manager', 'staff'] },
+    { id: 'resources', icon: Users, label: 'CRM', roles: ['administrator', 'admin', 'manager'] },
+    { id: 'projects', icon: Briefcase, label: 'Jobs', roles: ['administrator', 'admin', 'manager', 'staff'] },
+    { id: 'timeclock', icon: Clock, label: 'Time', roles: ['administrator', 'admin', 'manager', 'staff'] },
+    { id: 'calendar', icon: Calendar, label: 'Cal', roles: ['administrator', 'admin', 'manager', 'staff'] },
+    { id: 'admin', icon: Settings, label: 'Adm', roles: ['administrator', 'admin'] },
+  ].filter(t => {
+    if (isAdmin) return true;
+    if (isManager && t.roles.includes('manager')) return true;
+    return t.roles.includes(roleLower);
+  });
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 glass-morphism border-t border-[var(--border-color)] px-2 pb-safe pt-2 z-50 rounded-t-3xl shadow-2xl">
@@ -403,16 +411,24 @@ const BottomNav = ({ activeTab, setActiveTab, role, settings }: { activeTab: str
   );
 };
 
-const Sidebar = ({ activeTab, setActiveTab, role, onLogout, settings }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole, onLogout: () => void, settings: SystemSettings | null }) => {
+const Sidebar = ({ activeTab, setActiveTab, role, onLogout, settings, userEmail }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole, onLogout: () => void, settings: SystemSettings | null, userEmail?: string }) => {
+  const roleLower = (role || 'staff').toLowerCase();
+  const isAdmin = roleLower.includes('admin') || userEmail?.toLowerCase() === 'production@wonderweb.ae';
+  const isManager = roleLower.includes('manager') || isAdmin;
+
   const tabs = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['Administrator', 'Admin', 'Manager'] as UserRole[] },
-    { id: 'inventory', icon: Warehouse, label: 'Equipment', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'resources', icon: Users, label: 'CRM Hub', roles: ['Administrator', 'Admin', 'Manager'] as UserRole[] },
-    { id: 'projects', icon: Briefcase, label: 'Projects', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'timeclock', icon: Clock, label: 'Time Clock', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'calendar', icon: Calendar, label: 'Calendar', roles: ['Administrator', 'Admin', 'Manager', 'Staff'] as UserRole[] },
-    { id: 'admin', icon: Settings, label: 'Settings', roles: ['Administrator', 'Admin'] as UserRole[] },
-  ].filter(t => t.roles.includes(role));
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['administrator', 'admin', 'manager'] },
+    { id: 'inventory', icon: Warehouse, label: 'Equipment', roles: ['administrator', 'admin', 'manager', 'staff'] },
+    { id: 'resources', icon: Users, label: 'CRM Hub', roles: ['administrator', 'admin', 'manager'] },
+    { id: 'projects', icon: Briefcase, label: 'Projects', roles: ['administrator', 'admin', 'manager', 'staff'] },
+    { id: 'timeclock', icon: Clock, label: 'Time Clock', roles: ['administrator', 'admin', 'manager', 'staff'] },
+    { id: 'calendar', icon: Calendar, label: 'Calendar', roles: ['administrator', 'admin', 'manager', 'staff'] },
+    { id: 'admin', icon: Settings, label: 'Settings', roles: ['administrator', 'admin'] },
+  ].filter(t => {
+    if (isAdmin) return true;
+    if (isManager && t.roles.includes('manager')) return true;
+    return t.roles.includes(roleLower);
+  });
 
   return (
     <aside className="hidden md:flex flex-col w-64 bg-[var(--bg-secondary)] border-r border-[var(--border-color)] h-screen sticky top-0 z-50">
@@ -561,7 +577,9 @@ const ResourcesView = ({
   onDeleteVendor,
   onAddFreelancer,
   onUpdateFreelancer,
-  onDeleteFreelancer
+  onDeleteFreelancer,
+  role,
+  userEmail
 }: { 
   clients: Client[], 
   vendors: Vendor[], 
@@ -576,12 +594,17 @@ const ResourcesView = ({
   onDeleteVendor: (id: string) => void,
   onAddFreelancer: (f: Omit<Freelancer, 'id'>) => void,
   onUpdateFreelancer: (f: Freelancer) => void,
-  onDeleteFreelancer: (id: string) => void
+  onDeleteFreelancer: (id: string) => void,
+  role?: UserRole,
+  userEmail?: string
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'clients' | 'vendors' | 'freelancers' | 'staff'>('staff');
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
+
+  const roleLower = (role || '').toLowerCase();
+  const canEdit = roleLower.includes('admin') || roleLower === 'manager' || userEmail?.toLowerCase() === 'production@wonderweb.ae';
 
   const [clientForm, setClientForm] = useState<Omit<Client, 'id'>>({ 
     name: '', 
@@ -712,13 +735,15 @@ const ResourcesView = ({
             </div>
           </div>
           <div className="flex gap-2">
-            <button 
-              onClick={() => handleEdit(item)}
-              className="p-2 text-[var(--text-secondary)] hover:text-brand-blue transition-colors"
-            >
-              <Edit3 size={16} />
-            </button>
-            {!isStaff && (
+            {canEdit && (
+              <button 
+                onClick={() => handleEdit(item)}
+                className="p-2 text-[var(--text-secondary)] hover:text-brand-blue transition-colors"
+              >
+                <Edit3 size={16} />
+              </button>
+            )}
+            {canEdit && !isStaff && (
               <button 
                 onClick={() => handleDelete(item.id)}
                 className="p-2 text-[var(--text-secondary)] hover:text-red-500 transition-colors"
@@ -829,7 +854,7 @@ const ResourcesView = ({
           ))}
         </div>
 
-        <div className="flex gap-3">
+          <div className="flex gap-3">
           <div className="relative flex-1">
             <Search size={16} className="absolute left-4 top-3 text-[var(--text-secondary)]" />
             <input 
@@ -840,12 +865,14 @@ const ResourcesView = ({
               className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors text-[var(--text-primary)]"
             />
           </div>
-          <button 
-            onClick={() => { resetForms(); setIsModalOpen(true); }}
-            className="bg-brand-blue text-white px-4 rounded-2xl shadow-xl shadow-brand-blue/10 flex items-center justify-center"
-          >
-            <Plus size={20} />
-          </button>
+          {canEdit && (
+            <button 
+              onClick={() => { resetForms(); setIsModalOpen(true); }}
+              className="bg-brand-blue text-white px-4 rounded-2xl shadow-xl shadow-brand-blue/10 flex items-center justify-center"
+            >
+              <Plus size={20} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -1175,7 +1202,8 @@ const ProjectsView = ({
   onAdd, 
   onUpdate, 
   onDelete,
-  settings
+  settings,
+  userEmail
 }: { 
   role: UserRole, 
   projects: Project[],
@@ -1189,10 +1217,13 @@ const ProjectsView = ({
   onAdd: (p: Omit<Project, 'id'>) => void,
   onUpdate: (p: Project) => void,
   onDelete: (id: string) => void,
-  settings: SystemSettings | null
+  settings: SystemSettings | null,
+  userEmail?: string
 }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<Project['status'] | 'all'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'date' | 'name' | 'category'>('date');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [selectedProjectForPDF, setSelectedProjectForPDF] = useState<Project | null>(null);
@@ -1224,15 +1255,30 @@ const ProjectsView = ({
 
   const [projectAssignments, setProjectAssignments] = useState<(Omit<ProjectResourceAssignment, 'id' | 'projectId'> & { tempCategory?: string })[]>([]);
 
-  const filteredProjects = useMemo(() => projects.filter(p => {
-    const searchLower = search.toLowerCase();
-    const projectName = (p.name || '').toLowerCase();
-    const clientName = (clients.find(c => c.id === p.clientId)?.name || '').toLowerCase();
-    
-    const matchesSearch = projectName.includes(searchLower) || clientName.includes(searchLower);
-    const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  }), [projects, search, clients, statusFilter]);
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(projects.map(p => p.category).filter(Boolean))).sort();
+    return ['all', ...cats];
+  }, [projects]);
+
+  const filteredProjects = useMemo(() => {
+    let result = projects.filter(p => {
+      const searchLower = search.toLowerCase();
+      const projectName = (p.name || '').toLowerCase();
+      const clientName = (clients.find(c => c.id === p.clientId)?.name || '').toLowerCase();
+      
+      const matchesSearch = projectName.includes(searchLower) || clientName.includes(searchLower);
+      const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+      const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
+      return matchesSearch && matchesStatus && matchesCategory;
+    });
+
+    return result.sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'category') return (a.category || '').localeCompare(b.category || '');
+      // Latest first for date sorting
+      return (b.startDate || '').localeCompare(a.startDate || '');
+    });
+  }, [projects, search, clients, statusFilter, categoryFilter, sortBy]);
 
   const handleExportPDF = (project: Project) => {
     setSelectedProjectForPDF(project);
@@ -1317,6 +1363,8 @@ const ProjectsView = ({
     setEditingProject(null);
     setSearch('');
     setStatusFilter('all');
+    setCategoryFilter('all');
+    setSortBy('date');
     setFormData({
       name: '',
       referenceNumber: '',
@@ -1394,6 +1442,8 @@ const ProjectsView = ({
   };
 
   const selectedClient = clients.find(c => c.id === formData.clientId);
+  const roleLower = role?.toLowerCase() || '';
+  const canEdit = roleLower.includes('admin') || roleLower === 'manager' || userEmail?.toLowerCase() === 'production@wonderweb.ae';
 
   return (
     <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
@@ -1409,7 +1459,7 @@ const ProjectsView = ({
               className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors text-[var(--text-primary)]"
             />
           </div>
-          {(role === 'Administrator' || role === 'Manager') && (
+          {canEdit && (
             <>
               <button 
                 onClick={handleExportCSV}
@@ -1442,21 +1492,46 @@ const ProjectsView = ({
           )}
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          {(['all', 'planning', 'active', 'on-hold', 'completed'] as const).map(status => (
-            <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
-              className={cn(
-                "px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all whitespace-nowrap",
-                statusFilter === status 
-                  ? "bg-brand-blue text-white border-brand-blue shadow-lg shadow-brand-blue/20" 
-                  : "bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border-color)] hover:border-brand-blue/30"
-              )}
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide flex-1">
+            {(['all', 'planning', 'active', 'on-hold', 'completed'] as const).map(status => (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all whitespace-nowrap",
+                  statusFilter === status 
+                    ? "bg-brand-blue text-white border-brand-blue shadow-lg shadow-brand-blue/20" 
+                    : "bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border-color)] hover:border-brand-blue/30"
+                )}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-2 items-center">
+            <select 
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-3 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors appearance-none"
             >
-              {status}
-            </button>
-          ))}
+              <option value="all">ALL CATEGORIES</option>
+              {categories.filter(c => c !== 'all').map(cat => (
+                <option key={cat} value={cat}>{cat.toUpperCase()}</option>
+              ))}
+            </select>
+
+            <select 
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-3 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors appearance-none"
+            >
+              <option value="date">SORT BY DATE</option>
+              <option value="name">SORT BY NAME</option>
+              <option value="category">SORT BY CATEGORY</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -1588,7 +1663,7 @@ const ProjectsView = ({
                       >
                         <Download size={14} />
                       </button>
-                      {(role === 'Administrator' || role === 'Admin' || role === 'Manager') && (
+                      {canEdit && (
                         <>
                           <button 
                             onClick={() => handleEdit(project)}
@@ -1765,11 +1840,17 @@ const ProjectsView = ({
                     <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Category</label>
                     <input 
                       required
+                      list="project-category-options"
                       value={formData.category}
                       onChange={(e) => setFormData({...formData, category: e.target.value})}
-                      className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none"
+                      className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none focus:border-brand-blue"
                       placeholder="e.g. Civil"
                     />
+                    <datalist id="project-category-options">
+                      {categories.filter(c => c !== 'all').map(cat => (
+                        <option key={cat} value={cat} />
+                      ))}
+                    </datalist>
                   </div>
                </div>
                <ImageUpload 
@@ -2404,7 +2485,8 @@ const InventoryView = ({
   onUpdate, 
   onDelete,
   onAddMaintenanceTask,
-  onUpdateMaintenanceTask
+  onUpdateMaintenanceTask,
+  userEmail
 }: { 
   role: UserRole, 
   equipment: Equipment[], 
@@ -2414,8 +2496,12 @@ const InventoryView = ({
   onUpdate: (e: Equipment) => void,
   onDelete: (id: string) => void,
   onAddMaintenanceTask: (t: MaintenanceTask) => void,
-  onUpdateMaintenanceTask: (t: MaintenanceTask) => void
+  onUpdateMaintenanceTask: (t: MaintenanceTask) => void,
+  userEmail?: string
 }) => {
+  const roleLowerLocal = (role || '').toLowerCase();
+  const canEdit = roleLowerLocal.includes('admin') || roleLowerLocal === 'manager' || userEmail?.toLowerCase() === 'production@wonderweb.ae';
+
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -2442,6 +2528,16 @@ const InventoryView = ({
   });
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const filteredEquip = useMemo(() => {
+    return equipment.filter(e => {
+      const matchesSearch = e.name.toLowerCase().includes(search.toLowerCase()) || 
+                           e.serialNumber.toLowerCase().includes(search.toLowerCase());
+      const matchesCategory = categoryFilter === 'all' || e.category === categoryFilter;
+      const matchesStatus = statusFilter === 'all' || e.status === statusFilter;
+      return matchesSearch && matchesCategory && matchesStatus;
+    });
+  }, [equipment, search, categoryFilter, statusFilter]);
 
   const handleScheduleMaintenance = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2629,7 +2725,7 @@ const InventoryView = ({
               <Scan size={20} />
             </button>
           </div>
-          {(role === 'Administrator' || role === 'Admin' || role === 'Manager') && (
+          {canEdit && (
             <div className="flex gap-2">
               <button 
                 onClick={handleExportCSV}
@@ -2704,7 +2800,7 @@ const InventoryView = ({
                 <button className="text-[10px] font-black text-brand-blue uppercase tracking-widest flex items-center gap-1.5 group">
                   FLIGHT LOGS <ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
                 </button>
-                {(role === 'Administrator' || role === 'Manager') && (
+                {canEdit && (
                   <div className="flex gap-2">
                     <button 
                       onClick={() => handleEdit(item)}
@@ -2761,7 +2857,7 @@ const InventoryView = ({
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <h4 className="text-[10px] font-black uppercase text-[var(--text-secondary)] tracking-widest">Maintenance Schedule</h4>
-                {role !== 'Staff' && (
+                {canEdit && (
                   <button 
                     onClick={() => setIsSchedulingMaintenance(!isSchedulingMaintenance)}
                     className="text-[10px] font-black text-brand-blue uppercase tracking-widest hover:opacity-80"
@@ -2991,6 +3087,17 @@ const InventoryView = ({
 
 
 
+// Clean data for Firestore (remove undefined)
+const cleanData = (data: any) => {
+  const result = { ...data };
+  Object.keys(result).forEach(key => {
+    if (result[key] === undefined) {
+      delete result[key];
+    }
+  });
+  return result;
+};
+
 // --- Main App Component ---
 
 export default function App({ initialUser, onLogout }: { initialUser?: User, onLogout?: () => void }) {
@@ -3035,16 +3142,10 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
 
       // 3. Add new assignments
       const addPromises = newAssignments.map(ass => {
-        const data: any = {
+        const data = cleanData({
           ...ass,
           projectId,
           createdAt: serverTimestamp()
-        };
-        // Firestore doesn't accept undefined values
-        Object.keys(data).forEach(key => {
-          if (data[key] === undefined) {
-            delete data[key];
-          }
         });
         return addDoc(collection(db, 'assignments'), data);
       });
@@ -3052,7 +3153,7 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
       
       console.log(`Assignments synced for project ${projectId}`);
     } catch (err) {
-      console.error("Error syncing assignments:", err);
+      handleFirestoreError(err, OperationType.WRITE, `assignments/${projectId}`);
     }
   };
 
@@ -3131,11 +3232,20 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
       setUser(updated);
       if (db) {
         const profileRef = doc(db, 'profiles', updated.id);
-        await updateDoc(profileRef, { 
-          avatar_url: updated.imageUrl || '',
-          imageUrl: updated.imageUrl || '',
+        const { id, ...data } = updated;
+        const profileData = {
+          ...data,
+          avatar_url: updated.imageUrl || data.avatar || '',
+          imageUrl: updated.imageUrl || data.avatar || '',
           updatedAt: serverTimestamp()
+        };
+        // Clean undefined fields
+        Object.keys(profileData).forEach(key => {
+          if ((profileData as any)[key] === undefined) {
+             delete (profileData as any)[key];
+          }
         });
+        await updateDoc(profileRef, profileData);
         console.log("Profile updated successfully");
       }
     } catch (err) {
@@ -3146,12 +3256,11 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
   const addProject = async (newItem: Project) => {
     try {
       const { id, ...data } = newItem;
-      // Using setDoc with the generated ID ensures the ID matches between client and server
-      await setDoc(doc(db, 'projects', id), { 
+      await setDoc(doc(db, 'projects', id), cleanData({ 
         ...data, 
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
-      });
+      }));
       console.log(`Project added successfully: ${id}`);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'projects');
@@ -3161,10 +3270,10 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
   const handleUpdateProject = async (upd: Project) => {
     try {
       const { id, ...data } = upd;
-      await updateDoc(doc(db, 'projects', id), {
+      await updateDoc(doc(db, 'projects', id), cleanData({
         ...data,
         updatedAt: serverTimestamp()
-      } as any);
+      }));
       console.log(`Project ${id} updated successfully`);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `projects/${upd.id}`);
@@ -3215,6 +3324,7 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
         role={user.role} 
         onLogout={onLogout || (() => {})} 
         settings={settings}
+        userEmail={user.email}
       />
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
@@ -3242,25 +3352,50 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
               {activeTab === 'inventory' && (
                 <InventoryView 
                   role={user.role} 
-                  equipment={equipment}
+                  equipment={equipment} 
                   maintenanceTasks={maintenanceTasks}
                   assignments={assignments}
-                  onAdd={async (e) => await addDoc(collection(db, 'equipment'), { ...e, createdAt: serverTimestamp() })}
+                  onAdd={async (e) => {
+                    try {
+                      await addDoc(collection(db, 'equipment'), cleanData({ ...e, createdAt: serverTimestamp() }));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.CREATE, 'equipment');
+                    }
+                  }}
                   onUpdate={async (upd) => {
-                    const { id, ...data } = upd;
-                    await updateDoc(doc(db, 'equipment', id), data as any);
+                    try {
+                      const { id, ...data } = upd;
+                      await updateDoc(doc(db, 'equipment', id), cleanData(data));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.UPDATE, `equipment/${upd.id}`);
+                    }
                   }}
                   onDelete={async (id) => {
-                    if (window.confirm('Delete this asset?')) await deleteDoc(doc(db, 'equipment', id));
+                    if (window.confirm('Delete this asset?')) {
+                      try {
+                        await deleteDoc(doc(db, 'equipment', id));
+                      } catch (err) {
+                        handleFirestoreError(err, OperationType.DELETE, `equipment/${id}`);
+                      }
+                    }
                   }}
                   onAddMaintenanceTask={async (t) => {
-                    const { id, ...data } = t;
-                    await addDoc(collection(db, 'maintenanceTasks'), { ...data, createdAt: serverTimestamp() });
+                    try {
+                      const { id, ...data } = t;
+                      await addDoc(collection(db, 'maintenanceTasks'), cleanData({ ...data, createdAt: serverTimestamp() }));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.CREATE, 'maintenanceTasks');
+                    }
                   }}
                   onUpdateMaintenanceTask={async (t) => {
-                    const { id, ...data } = t;
-                    await updateDoc(doc(db, 'maintenanceTasks', id), data as any);
+                    try {
+                      const { id, ...data } = t;
+                      await updateDoc(doc(db, 'maintenanceTasks', id), cleanData(data));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.UPDATE, `maintenanceTasks/${t.id}`);
+                    }
                   }}
+                  userEmail={user.email}
                 />
               )}
               {activeTab === 'resources' && (
@@ -3273,36 +3408,86 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                     try {
                       const { id, ...data } = s;
                       const { role, email, ...updatable } = data;
-                      const updateData = {
+                      const updateData = cleanData({
                         ...updatable,
                         avatar_url: updatable.imageUrl || '',
                         imageUrl: updatable.imageUrl || '',
                         updatedAt: serverTimestamp()
-                      };
+                      });
                       await updateDoc(doc(db, 'profiles', id), updateData);
                       console.log(`Staff ${id} updated successfully`);
                     } catch (err) {
                       handleFirestoreError(err, OperationType.UPDATE, `profiles/${s.id}`);
                     }
                   }}
-                  onAddClient={async (c) => await addDoc(collection(db, 'clients'), { ...c, createdAt: serverTimestamp() })}
+                  onAddClient={async (c) => {
+                    try {
+                      await addDoc(collection(db, 'clients'), cleanData({ ...c, createdAt: serverTimestamp() }));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.CREATE, 'clients');
+                    }
+                  }}
                   onUpdateClient={async (c) => {
-                    const { id, ...data } = c;
-                    await updateDoc(doc(db, 'clients', id), data as any);
+                    try {
+                      const { id, ...data } = c;
+                      await updateDoc(doc(db, 'clients', id), cleanData(data));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.UPDATE, `clients/${c.id}`);
+                    }
                   }}
-                  onDeleteClient={async (id) => await deleteDoc(doc(db, 'clients', id))}
-                  onAddVendor={async (v) => await addDoc(collection(db, 'vendors'), { ...v, createdAt: serverTimestamp() })}
+                  onDeleteClient={async (id) => {
+                    try {
+                      await deleteDoc(doc(db, 'clients', id));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.DELETE, `clients/${id}`);
+                    }
+                  }}
+                  onAddVendor={async (v) => {
+                    try {
+                      await addDoc(collection(db, 'vendors'), cleanData({ ...v, createdAt: serverTimestamp() }));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.CREATE, 'vendors');
+                    }
+                  }}
                   onUpdateVendor={async (v) => {
-                    const { id, ...data } = v;
-                    await updateDoc(doc(db, 'vendors', id), data as any);
+                    try {
+                      const { id, ...data } = v;
+                      await updateDoc(doc(db, 'vendors', id), cleanData(data));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.UPDATE, `vendors/${v.id}`);
+                    }
                   }}
-                  onDeleteVendor={async (id) => await deleteDoc(doc(db, 'vendors', id))}
-                  onAddFreelancer={async (f) => await addDoc(collection(db, 'freelancers'), { ...f, createdAt: serverTimestamp() })}
+                  onDeleteVendor={async (id) => {
+                    try {
+                      await deleteDoc(doc(db, 'vendors', id));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.DELETE, `vendors/${id}`);
+                    }
+                  }}
+                  onAddFreelancer={async (f) => {
+                    try {
+                      await addDoc(collection(db, 'freelancers'), cleanData({ ...f, createdAt: serverTimestamp() }));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.CREATE, 'freelancers');
+                    }
+                  }}
                   onUpdateFreelancer={async (f) => {
-                    const { id, ...data } = f;
-                    await updateDoc(doc(db, 'freelancers', id), data as any);
+                    try {
+                      const { id, ...data } = f;
+                      await updateDoc(doc(db, 'freelancers', id), cleanData(data));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.UPDATE, `freelancers/${f.id}`);
+                    }
                   }}
-                  onDeleteFreelancer={async (id) => await deleteDoc(doc(db, 'freelancers', id))}
+                  onDeleteFreelancer={async (id) => {
+                    try {
+                      await deleteDoc(doc(db, 'freelancers', id));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.DELETE, `freelancers/${id}`);
+                    }
+                  }}
+                  role={user.role}
+                  userEmail={user.email}
                 />
               )}
               {activeTab === 'timeclock' && (
@@ -3410,6 +3595,7 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                   onUpdate={handleUpdateProject}
                   onDelete={handleDeleteProject}
                   settings={settings}
+                  userEmail={user.email}
                 />
               )}
             </motion.div>
@@ -3421,6 +3607,7 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
           setActiveTab={setActiveTab} 
           role={user.role} 
           settings={settings}
+          userEmail={user.email}
         />
       </div>
     </div>

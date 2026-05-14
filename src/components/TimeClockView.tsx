@@ -1,5 +1,5 @@
 // Force Vite reload
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { format } from 'date-fns';
 import { Clock, Plus, Send, Edit3, Check, X, Shield, Settings, Trash2, Download } from 'lucide-react';
 import { AttendanceRecord, LeaveRequest, User, LeaveType, LeaveStatus, CalendarConfig } from '../types';
@@ -31,7 +31,8 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
     reason: ''
   });
 
-  const isAdminView = ['Administrator', 'Admin', 'Manager'].includes(user.role);
+  const roleLower = user.role?.toLowerCase() || '';
+  const isAdminView = ['administrator', 'admin', 'manager'].includes(roleLower);
   const [selectedUserId, setSelectedUserId] = useState<string>(user.id);
   const latestSelf = users.find(u => u.id === user.id) || user;
   const targetUser = isAdminView ? (users.find(u => u.id === selectedUserId) || latestSelf) : latestSelf;
@@ -44,20 +45,34 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
   const [bulkForm, setBulkForm] = useState({ fromDate: new Date().toISOString().split('T')[0], toDate: new Date().toISOString().split('T')[0], applyToAll: false, standardHours: 9 });
 
   const [isEditingLimits, setIsEditingLimits] = useState(false);
+  const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null);
+  const [editingLeaveForm, setEditingLeaveForm] = useState<Partial<LeaveRequest>>({});
+
   const [limitsForm, setLimitsForm] = useState({
     yearlyLeaveDays: targetUser.yearlyLeaveDays ?? 30,
     remainingCompOff: targetUser.remainingCompOff ?? 0,
     standardWorkingHours: targetUser.standardWorkingHours ?? 9
   });
 
-  // Sync limits form when target user changes
-  React.useEffect(() => {
+  // Sync form when target user changes (e.g. after save or user selection)
+  useEffect(() => {
     setLimitsForm({
       yearlyLeaveDays: targetUser.yearlyLeaveDays ?? 30,
       remainingCompOff: targetUser.remainingCompOff ?? 0,
       standardWorkingHours: targetUser.standardWorkingHours ?? 9
     });
-  }, [targetUser.id, targetUser.yearlyLeaveDays, targetUser.remainingCompOff, targetUser.standardWorkingHours]);
+  }, [targetUser.yearlyLeaveDays, targetUser.remainingCompOff, targetUser.standardWorkingHours, targetUser.id]);
+
+  const handleSaveLeaveEdit = async () => {
+    if (!editingLeaveId) return;
+    try {
+      await onUpdateLeave(editingLeaveId, editingLeaveForm);
+      setEditingLeaveId(null);
+      setEditingLeaveForm({});
+    } catch (err) {
+      console.error("Error updating leave:", err);
+    }
+  };
 
   const myAttendance = attendance
     .filter(a => a.staffId === targetUser.id)
@@ -70,13 +85,12 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
   const targetStdHours = targetUser.standardWorkingHours || 9;
   
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 12, 0, 0);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 12, 0, 0);
   
   const getExpectedHours = (dateStr: string, record?: AttendanceRecord) => {
-    // Robust date parsing to avoid timezone-shifted day-of-week checks
     const [y, m, day] = dateStr.split('-').map(Number);
-    const d = new Date(y, m - 1, day);
+    const d = new Date(y, m - 1, day, 12, 0, 0);
     const dayOfWeek = d.getDay();
     
     const isPublicHoliday = (calendarConfig.publicHolidays || []).some(h => 
@@ -94,11 +108,9 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
     if (onLeave) return 0;
 
     const isBasicWorkDay = !isPublicHoliday && !isWeekend;
-    // Overridden to work if forced working date OR if admin manually set standard hours > 0 on a non-work day
     const isOverriddenToWork = (isPublicHoliday || isWeekend) && (isForcedWorking || (record?.standardHours ?? 0) > 0);
 
     if (isBasicWorkDay) {
-      // For a normal work day, return the override or target std hours
       return record?.standardHours ?? targetStdHours;
     }
     
@@ -106,37 +118,31 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
       return record?.standardHours ?? targetStdHours;
     }
 
-    return 0; // Weekend or Holiday without override
+    return 0;
   };
 
-  let expectedMonthHours = 0;
-  let expectedActuallyWorkedHoursTotal = 0;
-  let dIterFull = new Date(startOfMonth);
-  while (dIterFull <= endOfMonth) {
-    const dateStr = format(dIterFull, 'yyyy-MM-dd');
+  let fullMonthTarget = 0;
+  let totalHoursWorked = 0;
+  let expectedForAttendedDays = 0;
+  
+  let dIter = new Date(startOfMonth);
+  while (dIter <= endOfMonth) {
+    const dateStr = format(dIter, 'yyyy-MM-dd');
     const record = myAttendance.find(a => a.date === dateStr);
+    const hasAttendance = record && record.checkIn !== 'OVERRIDE';
     
-    expectedMonthHours += getExpectedHours(dateStr, record);
+    const dayTarget = getExpectedHours(dateStr, record);
+    fullMonthTarget += dayTarget;
     
-    if (record && record.checkIn !== 'OVERRIDE') {
-       expectedActuallyWorkedHoursTotal += getExpectedHours(dateStr, record);
+    if (hasAttendance) {
+      totalHoursWorked += (record.hoursWorked || 0);
+      expectedForAttendedDays += dayTarget;
     }
     
-    dIterFull.setDate(dIterFull.getDate() + 1);
+    dIter.setDate(dIter.getDate() + 1);
   }
 
-  const currentMonthAttendance = myAttendance.filter(a => {
-    const [y, m] = a.date.split('-');
-    return parseInt(y) === now.getFullYear() && parseInt(m) === (now.getMonth() + 1);
-  });
-
-  const visibleMonthAttendance = currentMonthAttendance.filter(a => a.checkIn !== 'OVERRIDE');
-
-  const extraHours = visibleMonthAttendance.reduce((sum, a) => sum + Math.max(0, (a.hoursWorked || 0) - getExpectedHours(a.date, a)), 0);
-  const lessHours = visibleMonthAttendance.reduce((sum, a) => sum + (a.checkOut && a.checkOut !== 'OVERRIDE' ? Math.max(0, getExpectedHours(a.date, a) - (a.hoursWorked || 0)) : 0), 0);
-  const netHours = extraHours - lessHours;
-
-  const actualMonthHours = visibleMonthAttendance.reduce((sum, a) => sum + (a.hoursWorked || 0), 0);
+  const netBalance = totalHoursWorked - expectedForAttendedDays;
 
   const handleDownloadAttendance = () => {
     const headers = [
@@ -195,19 +201,20 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
       d.setDate(d.getDate() + 1);
     }
 
-    const totalExpectedHours = rows.reduce((sum, r) => sum + parseFloat(r[5]), 0);
-    const totalActualWorked = rows.reduce((sum, r) => sum + parseFloat(r[4]), 0);
-    const totalExtra = rows.reduce((sum, r) => sum + parseFloat(r[7]), 0);
-    const netBalance = totalActualWorked - totalExpectedHours;
+    const totalExpectedHoursFull = rows.reduce((sum, r) => sum + parseFloat(r[5] || '0'), 0);
+    const totalActualWorked = rows.reduce((sum, r) => sum + parseFloat(r[4] || '0'), 0);
+    const attendedRows = rows.filter(r => r[2] !== '-');
+    const expectedForAttendedDaysLocal = attendedRows.reduce((sum, r) => sum + parseFloat(r[5] || '0'), 0);
+    const netBalanceLocal = totalActualWorked - expectedForAttendedDaysLocal;
 
     const summaryRows = [
       [],
       ['SUMMARY'],
-      ['Total Expected Hours', totalExpectedHours.toFixed(2)],
+      ['Full Month Target Hours', totalExpectedHoursFull.toFixed(2)],
       ['Total Actual Worked', totalActualWorked.toFixed(2)],
-      ['Total Extra (OT)', totalExtra.toFixed(2)],
-      ['Net Balance', netBalance.toFixed(2)],
-      ['Approved Leaves (Days)', usedAnnualLeaveDays]
+      ['Attendance Target (Expected for days worked)', expectedForAttendedDaysLocal.toFixed(2)],
+      ['Net Attendance Balance (Actual - Attendance Target)', netBalanceLocal.toFixed(2)],
+      ['Used Annual Leave (Days)', usedAnnualDays]
     ];
 
     const csvContent = [
@@ -231,34 +238,49 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
   const earlyLeaveCount = approvedLeaves.filter(l => l.type === LeaveType.EARLY_LEAVE).length;
   const compOffCalculated = approvedLeaves.filter(l => l.type === LeaveType.COMP_OFF).length;
 
-  const yearlyLeaveDaysBase = targetUser.yearlyLeaveDays ?? 30;
-  const compOffBalance = targetUser.remainingCompOff ?? compOffCalculated;
+  const yearlyLeaveDaysBase = Number(targetUser.yearlyLeaveDays ?? 30);
+  const earnedCompOffBalance = Number(targetUser.remainingCompOff ?? 0);
 
-  const approvedAnnualLeave = approvedLeaves.filter(l => l.type === LeaveType.ANNUAL);
-  const usedAnnualLeaveDays = approvedAnnualLeave.reduce((sum, leave) => {
-    let days = 0;
-    let d = new Date(leave.startDate);
-    const end = new Date(leave.endDate);
-    while (d <= end) {
-      const dateStr = d.toISOString().split('T')[0];
-      const isPublicHoliday = (calendarConfig.publicHolidays || []).some(h => 
-        dateStr >= h.startDate && dateStr <= h.endDate
-      );
-      const isWeekendDays = (calendarConfig.workingWeekends && calendarConfig.workingWeekends.length > 0) 
-        ? calendarConfig.workingWeekends 
-        : [0, 6];
-      const isWeekend = isWeekendDays.includes(d.getDay());
-      const isForcedWorking = (calendarConfig.forcedWorkingDates || []).includes(dateStr);
-      
-      if (!isPublicHoliday && (!isWeekend || isForcedWorking)) {
-        days++;
-      }
-      d.setDate(d.getDate() + 1);
-    }
-    return sum + days;
-  }, 0);
-  const totalGrantedLeaves = yearlyLeaveDaysBase + compOffBalance;
-  const leaveBalance = totalGrantedLeaves - usedAnnualLeaveDays;
+  const calculateUsedDays = (leaveType: LeaveType) => {
+    return approvedLeaves
+      .filter(l => l.type === leaveType)
+      .reduce((sum, leave) => {
+        let days = 0;
+        const startParts = (leave.startDate || '').split('-').map(Number);
+        const endParts = (leave.endDate || '').split('-').map(Number);
+        
+        if (startParts.length < 3 || endParts.length < 3) return sum;
+        
+        let d = new Date(startParts[0], startParts[1] - 1, startParts[2], 12, 0, 0);
+        const end = new Date(endParts[0], endParts[1] - 1, endParts[2], 12, 0, 0);
+
+        let maxIter = 400; 
+        while (d <= end && maxIter > 0) {
+          maxIter--;
+          const dateStr = format(d, 'yyyy-MM-dd');
+          const isPublicHoliday = (calendarConfig.publicHolidays || []).some(h => 
+            dateStr >= h.startDate && dateStr <= h.endDate
+          );
+          const isWeekendDays = (calendarConfig.workingWeekends && calendarConfig.workingWeekends.length > 0) 
+            ? calendarConfig.workingWeekends 
+            : [0, 6];
+          const isWeekend = isWeekendDays.includes(d.getDay());
+          const isForcedWorking = (calendarConfig.forcedWorkingDates || []).includes(dateStr);
+          
+          if (!isPublicHoliday && (!isWeekend || isForcedWorking)) {
+            days++;
+          }
+          d.setDate(d.getDate() + 1);
+        }
+        return sum + days;
+      }, 0);
+  };
+
+  const usedAnnualDays = calculateUsedDays(LeaveType.ANNUAL);
+  const usedCompOffDays = calculateUsedDays(LeaveType.COMP_OFF);
+  
+  const annualBalance = yearlyLeaveDaysBase - usedAnnualDays;
+  const compOffBalance = earnedCompOffBalance - usedCompOffDays;
 
   const handleRequestLeave = () => {
     onRequestLeave({
@@ -413,19 +435,22 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
 
           <div className="space-y-1.5">
             <div className="flex justify-between items-center py-1 border-b border-[var(--border-color)]/30">
-              <span className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Target</span>
-              <span className="text-xs font-black">{expectedMonthHours.toFixed(1)} hrs</span>
+              <span className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Monthly Target</span>
+              <span className="text-xs font-black">{fullMonthTarget.toFixed(1)} hrs</span>
             </div>
             <div className="flex justify-between items-center py-1 border-b border-[var(--border-color)]/30">
-              <span className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Worked</span>
-              <span className="text-xs font-black text-brand-blue">{expectedActuallyWorkedHoursTotal.toFixed(1)} hrs</span>
+              <span className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Actual Worked</span>
+              <span className="text-xs font-black text-brand-blue">{totalHoursWorked.toFixed(1)} hrs</span>
             </div>
              <div className="flex justify-between items-center py-1">
-              <span className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Diff</span>
-              <span className={`text-xs font-black ${expectedActuallyWorkedHoursTotal >= expectedMonthHours ? 'text-green-500' : 'text-brand-orange'}`}>
-                {(expectedActuallyWorkedHoursTotal - expectedMonthHours).toFixed(1)} hrs
+              <span className="text-[8px] font-black text-[var(--text-secondary)] uppercase underline decoration-brand-blue/30 underline-offset-4">Attendance Diff</span>
+              <span className={`text-xs font-black ${netBalance >= 0 ? 'text-green-500' : 'text-brand-orange'}`}>
+                {netBalance >= 0 ? '+' : ''}{netBalance.toFixed(1)} hrs
               </span>
             </div>
+            <p className="text-[7px] text-[var(--text-secondary)] font-bold italic mt-1 leading-tight">
+              * Diff = Actual Worked — Expected hours of attended days only
+            </p>
           </div>
         </div>
 
@@ -479,23 +504,38 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
             </div>
           ) : (
             <>
-              <div>
-                <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-1">
-                  Leave Balance
-                </p>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-black text-brand-blue">{leaveBalance}</span>
-                  <span className="text-[9px] font-black text-[var(--text-secondary)] uppercase">/ {totalGrantedLeaves} days</span>
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-1">
+                    Annual Leave Balance
+                  </p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-black text-brand-blue">{annualBalance}</span>
+                    <span className="text-[9px] font-black text-[var(--text-secondary)] uppercase">/ {yearlyLeaveDaysBase} days</span>
+                  </div>
+                  <p className="text-[8px] text-[var(--text-secondary)]">Used: {usedAnnualDays} days</p>
+                </div>
+                
+                <div>
+                  <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-1">
+                    Comp-Off Balance
+                  </p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xl font-black text-green-500">{compOffBalance}</span>
+                    <span className="text-[9px] font-black text-[var(--text-secondary)] uppercase">/ {earnedCompOffBalance} earned</span>
+                  </div>
+                  <p className="text-[8px] text-[var(--text-secondary)]">Used: {usedCompOffDays} days</p>
                 </div>
               </div>
+              
               <div className="flex justify-between items-center mt-2 pt-2 border-t border-[var(--border-color)]">
                 <div>
-                  <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Early</p>
+                  <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Early Leve</p>
                   <p className="text-xs font-black text-brand-orange">{earlyLeaveCount}</p>
                 </div>
                 <div>
-                   <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Comp Off</p>
-                   <p className="text-xs font-black text-green-500">{compOffBalance}</p>
+                   <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Late Counts</p>
+                   <p className="text-xs font-black text-red-500">{attendance.filter(a => a.staffId === targetUser.id && a.checkIn && a.checkIn > '09:05').length}</p>
                 </div>
               </div>
             </>
@@ -846,70 +886,128 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
 
       {activeTab === 'leave' && (
         <div className="space-y-3">
-          {myLeaves.map(l => (
-            <div key={l.id} className="p-5 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 group hover:border-brand-blue/30 transition-all relative">
-                <div className="space-y-1 w-full sm:w-auto">
-                  <div className="flex items-center gap-2">
-                    <p className="font-black text-[8px] uppercase tracking-[0.2em] text-brand-blue bg-brand-blue/10 px-2 py-0.5 rounded inline-block">
-                      {l.type.replace('_', ' ')}
-                    </p>
-                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
-                      l.status === LeaveStatus.APPROVED ? 'bg-green-500/10 text-green-500' : 
-                      l.status === LeaveStatus.REJECTED ? 'bg-red-500/10 text-red-500' :
-                      'bg-yellow-500/10 text-yellow-500'
-                    }`}>
-                      {l.status}
-                    </span>
+          {myLeaves.map(l => {
+            const isEditing = editingLeaveId === l.id;
+            return (
+              <div key={l.id} className="p-5 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] flex flex-col justify-between items-stretch gap-3 group hover:border-brand-blue/30 transition-all relative">
+                {isEditing ? (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                       <p className="font-black text-[10px] uppercase tracking-widest text-brand-blue">Edit Leave Request</p>
+                       <div className="flex gap-2">
+                        <button onClick={handleSaveLeaveEdit} className="p-1.5 bg-green-500/10 text-green-500 rounded-lg hover:bg-green-500/20"><Check size={14}/></button>
+                        <button onClick={() => setEditingLeaveId(null)} className="p-1.5 bg-[var(--bg-primary)] text-[var(--text-secondary)] rounded-lg"><X size={14}/></button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-[var(--text-secondary)]">Type</label>
+                        <select 
+                          value={editingLeaveForm.type} 
+                          onChange={(e) => setEditingLeaveForm({...editingLeaveForm, type: e.target.value as LeaveType})}
+                          className="w-full bg-[var(--bg-primary)] p-2 rounded-lg text-xs font-black border border-[var(--border-color)]"
+                        >
+                          {Object.values(LeaveType).map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-[var(--text-secondary)]">Start Date</label>
+                        <input type="date" value={editingLeaveForm.startDate} onChange={(e) => setEditingLeaveForm({...editingLeaveForm, startDate: e.target.value})} className="w-full bg-[var(--bg-primary)] p-2 rounded-lg text-xs border border-[var(--border-color)]" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-[var(--text-secondary)]">End Date</label>
+                        <input type="date" value={editingLeaveForm.endDate} onChange={(e) => setEditingLeaveForm({...editingLeaveForm, endDate: e.target.value})} className="w-full bg-[var(--bg-primary)] p-2 rounded-lg text-xs border border-[var(--border-color)]" />
+                      </div>
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-[var(--text-secondary)]">Reason</label>
+                        <textarea value={editingLeaveForm.reason} onChange={(e) => setEditingLeaveForm({...editingLeaveForm, reason: e.target.value})} className="w-full bg-[var(--bg-primary)] p-2 rounded-lg text-xs border border-[var(--border-color)] h-20" />
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-xs font-black text-[var(--text-primary)] uppercase tracking-tight">
-                    {l.startDate === l.endDate ? l.startDate : `${l.startDate} TO ${l.endDate}`}
-                  </p>
-                  {l.reason && (
-                    <p className="text-[10px] text-[var(--text-secondary)] italic mt-1 line-clamp-1">{l.reason}</p>
-                  )}
-                </div>
-                
-                {isAdminView && (
-                  <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-0 border-[var(--border-color)]">
-                    {l.status !== LeaveStatus.APPROVED && (
-                      <button 
-                        onClick={() => onUpdateLeave?.(l.id, { status: LeaveStatus.APPROVED })}
-                        className="flex-1 sm:flex-none px-3 py-1.5 bg-green-500/10 text-green-500 hover:bg-green-500/20 text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center justify-center gap-1 transition-colors"
-                      >
-                        <Check size={12} /> Approve
-                      </button>
+                ) : (
+                  <>
+                    <div className="space-y-1 w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-black text-[8px] uppercase tracking-[0.2em] text-brand-blue bg-brand-blue/10 px-2 py-0.5 rounded inline-block">
+                            {l.type.replace('_', ' ')}
+                          </p>
+                          <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
+                            l.status === LeaveStatus.APPROVED ? 'bg-green-500/10 text-green-500' : 
+                            l.status === LeaveStatus.REJECTED ? 'bg-red-500/10 text-red-500' :
+                            'bg-yellow-500/10 text-yellow-500'
+                          }`}>
+                            {l.status}
+                          </span>
+                        </div>
+                        <p className="text-xs font-black text-[var(--text-primary)] uppercase tracking-tight">
+                          {l.startDate === l.endDate ? l.startDate : `${l.startDate} TO ${l.endDate}`}
+                        </p>
+                        {l.reason && (
+                          <p className="text-[10px] text-[var(--text-secondary)] font-medium mt-1 line-clamp-1 italic">“{l.reason}”</p>
+                        )}
+                      </div>
+                      
+                      {isAdminView && (
+                        <div className="flex gap-2 shrink-0">
+                          <button 
+                            onClick={() => {
+                              setEditingLeaveId(l.id);
+                              setEditingLeaveForm({ type: l.type, startDate: l.startDate, endDate: l.endDate, reason: l.reason });
+                            }}
+                            className="p-2 bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:text-brand-blue border border-[var(--border-color)] rounded-xl"
+                            title="Edit Details"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {isAdminView && (
+                      <div className="flex gap-2 w-full mt-2 pt-3 border-t border-[var(--border-color)]/30">
+                        {l.status !== LeaveStatus.APPROVED && (
+                          <button 
+                            onClick={() => onUpdateLeave?.(l.id, { status: LeaveStatus.APPROVED })}
+                            className="flex-1 px-3 py-1.5 bg-green-500/10 text-green-500 hover:bg-green-500/20 text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center justify-center gap-1 transition-colors"
+                          >
+                            <Check size={12} /> Approve
+                          </button>
+                        )}
+                        {l.status !== LeaveStatus.REJECTED && (
+                          <button 
+                            onClick={() => onUpdateLeave?.(l.id, { status: LeaveStatus.REJECTED })}
+                            className="flex-1 px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center justify-center gap-1 transition-colors"
+                          >
+                            <X size={12} /> Reject
+                          </button>
+                        )}
+                        {l.status !== LeaveStatus.PENDING && (
+                          <button 
+                            onClick={() => onUpdateLeave?.(l.id, { status: LeaveStatus.PENDING })}
+                            className="flex-1 px-3 py-1.5 bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center justify-center gap-1 transition-colors"
+                            title="Set to Pending"
+                          >
+                            <Clock size={12} /> Pending
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => {
+                            if (window.confirm('Delete this leave request?')) {
+                              onDeleteLeave?.(l.id);
+                            }
+                          }}
+                          className="px-3 py-1.5 text-red-500 hover:bg-red-500/10 border border-red-500/20 rounded-lg"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                     )}
-                    {l.status !== LeaveStatus.REJECTED && (
-                      <button 
-                        onClick={() => onUpdateLeave?.(l.id, { status: LeaveStatus.REJECTED })}
-                        className="flex-1 sm:flex-none px-3 py-1.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center justify-center gap-1 transition-colors"
-                      >
-                        <X size={12} /> Reject
-                      </button>
-                    )}
-                    {l.status !== LeaveStatus.PENDING && (
-                      <button 
-                        onClick={() => onUpdateLeave?.(l.id, { status: LeaveStatus.PENDING })}
-                        className="flex-1 sm:flex-none px-3 py-1.5 bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center justify-center gap-1 transition-colors"
-                        title="Set to Pending"
-                      >
-                        <Clock size={12} />
-                      </button>
-                    )}
-                    <button 
-                      onClick={() => {
-                        if (window.confirm('Delete this leave request?')) {
-                          onDeleteLeave?.(l.id);
-                        }
-                      }}
-                      className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
+                  </>
                 )}
-            </div>
-          ))}
+              </div>
+            );
+          })}
           {myLeaves.length === 0 && (
             <div className="text-center py-12 border-2 border-dashed border-[var(--border-color)] rounded-3xl">
               <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-[0.2em]">No leave records found</p>

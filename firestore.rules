@@ -17,14 +17,14 @@ service cloud.firestore {
 
     // Bootstrapped Admin check
     function isBootstrappedAdmin() {
-      return request.auth.token.email == 'Production@wonderweb.ae';
+      return request.auth.token.email.lower() == 'production@wonderweb.ae';
     }
 
     function isAdmin() {
       return isSignedIn() && (
         isBootstrappedAdmin() || 
         (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role in ['Administrator', 'Admin'])
+         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role.lower() in ['administrator', 'admin'])
       );
     }
 
@@ -32,7 +32,7 @@ service cloud.firestore {
       return isSignedIn() && (
         isAdmin() || 
         (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'Manager')
+         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role.lower() == 'manager')
       );
     }
 
