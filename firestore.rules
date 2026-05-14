@@ -87,7 +87,7 @@ service cloud.firestore {
 
       allow update: if isSignedIn() && isValidProfile(incoming()) && (
         // Case 1: Admin updating someone else's info (INCLUDING ROLE)
-        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'name', 'display_name', 'email', 'avatar_url', 'imageUrl', 'id', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded', 'updatedAt', 'yearlyLeaveDays', 'remainingCompOff', 'standardWorkingHours'])) ||
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'name', 'display_name', 'email', 'avatar_url', 'imageUrl', 'id', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded', 'updatedAt', 'yearlyLeaveDays', 'remainingCompOff', 'standardWorkingHours', 'checkInStatus', 'lastCheckIn'])) ||
         // Case 2: Owner updating their own info
         (isOwner(profileId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'display_name', 'avatar_url', 'imageUrl', 'checkInStatus', 'lastCheckIn', 'phone', 'whatsapp', 'address', 'emergencyContact', 'isOnboarded', 'emergencyContactName', 'emergencyContactRelation', 'updatedAt']))
       );

@@ -363,7 +363,7 @@ const generateProjectPDF = async (project: Project, client?: Client, assignments
 
 const BottomNav = ({ activeTab, setActiveTab, role, settings, userEmail }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole, settings: SystemSettings | null, userEmail?: string }) => {
   const roleLower = (role || 'staff').toLowerCase();
-  const isAdmin = roleLower.includes('admin') || userEmail?.toLowerCase() === 'production@wonderweb.ae';
+  const isAdmin = roleLower.includes('admin') || userEmail?.toLowerCase().trim() === 'production@wonderweb.ae';
   const isManager = roleLower.includes('manager') || isAdmin;
   
   const tabs = [
@@ -413,7 +413,7 @@ const BottomNav = ({ activeTab, setActiveTab, role, settings, userEmail }: { act
 
 const Sidebar = ({ activeTab, setActiveTab, role, onLogout, settings, userEmail }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole, onLogout: () => void, settings: SystemSettings | null, userEmail?: string }) => {
   const roleLower = (role || 'staff').toLowerCase();
-  const isAdmin = roleLower.includes('admin') || userEmail?.toLowerCase() === 'production@wonderweb.ae';
+  const isAdmin = roleLower.includes('admin') || userEmail?.toLowerCase().trim() === 'production@wonderweb.ae';
   const isManager = roleLower.includes('manager') || isAdmin;
 
   const tabs = [
@@ -604,7 +604,7 @@ const ResourcesView = ({
   const [editingItem, setEditingItem] = useState<any>(null);
 
   const roleLower = (role || '').toLowerCase();
-  const canEdit = roleLower.includes('admin') || roleLower === 'manager' || userEmail?.toLowerCase() === 'production@wonderweb.ae';
+  const canEdit = roleLower.includes('admin') || roleLower === 'manager' || userEmail?.toLowerCase().trim() === 'production@wonderweb.ae';
 
   const [clientForm, setClientForm] = useState<Omit<Client, 'id'>>({ 
     name: '', 
@@ -1443,7 +1443,7 @@ const ProjectsView = ({
 
   const selectedClient = clients.find(c => c.id === formData.clientId);
   const roleLower = role?.toLowerCase() || '';
-  const canEdit = roleLower.includes('admin') || roleLower === 'manager' || userEmail?.toLowerCase() === 'production@wonderweb.ae';
+  const canEdit = roleLower.includes('admin') || roleLower === 'manager' || userEmail?.toLowerCase().trim() === 'production@wonderweb.ae';
 
   return (
     <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
@@ -1484,9 +1484,10 @@ const ProjectsView = ({
               />
               <button 
                 onClick={() => { resetForm(); setIsModalOpen(true); }}
-                className="bg-brand-blue text-white px-4 rounded-2xl shadow-xl shadow-brand-blue/10 flex items-center justify-center"
+                className="bg-brand-blue text-white px-6 rounded-2xl shadow-xl shadow-brand-blue/30 flex items-center gap-2 hover:scale-[1.02] active:scale-95 transition-all"
               >
-                <Plus size={20} />
+                <Plus size={18} />
+                <span className="text-[10px] font-black uppercase tracking-widest">New Project</span>
               </button>
             </>
           )}
@@ -2500,7 +2501,7 @@ const InventoryView = ({
   userEmail?: string
 }) => {
   const roleLowerLocal = (role || '').toLowerCase();
-  const canEdit = roleLowerLocal.includes('admin') || roleLowerLocal === 'manager' || userEmail?.toLowerCase() === 'production@wonderweb.ae';
+  const canEdit = roleLowerLocal.includes('admin') || roleLowerLocal === 'manager' || userEmail?.toLowerCase().trim() === 'production@wonderweb.ae';
 
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -2618,7 +2619,7 @@ const InventoryView = ({
           onAdd(rest);
         }
       });
-      alert(`Imported ${newItems.length} items successfully.`);
+      console.log(`Imported ${newItems.length} items successfully.`);
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsText(file);
@@ -3494,72 +3495,105 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                 <TimeClockView 
                   user={user} 
                   users={staff}
+                  currentUserEmail={user.email}
                   attendance={attendance} 
                   leaveRequests={leaveRequests}
                   calendarConfig={calendarConfig}
                   onCheckIn={async (staffId) => {
-                    const sid = staffId || user.id;
-                    const now = new Date();
-                    const dateStr = now.toISOString().split('T')[0];
-                    
-                    // Check if an override or existing record for today exists
-                    const existing = attendance.find(a => a.staffId === sid && a.date === dateStr);
-                    
-                    const recordData = {
-                      checkIn: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                      checkInRaw: now.toISOString(),
-                      hoursWorked: 0,
-                    };
+                    try {
+                      const sid = staffId || user.id;
+                      const now = new Date();
+                      const dateStr = now.toISOString().split('T')[0];
+                      
+                      // Check if an override or existing record for today exists
+                      const existing = attendance.find(a => a.staffId === sid && a.date === dateStr);
+                      
+                      const recordData = {
+                        checkIn: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        checkInRaw: now.toISOString(),
+                        hoursWorked: 0,
+                      };
 
-                    if (existing) {
-                      await updateDoc(doc(db, 'attendance', existing.id), recordData);
-                    } else {
-                      await addDoc(collection(db, 'attendance'), {
-                        ...recordData,
-                        staffId: sid,
-                        date: dateStr,
-                        createdAt: serverTimestamp()
-                      });
+                      if (existing) {
+                        await updateDoc(doc(db, 'attendance', existing.id), recordData);
+                      } else {
+                        await addDoc(collection(db, 'attendance'), {
+                          ...recordData,
+                          staffId: sid,
+                          date: dateStr,
+                          createdAt: serverTimestamp()
+                        });
+                      }
+                      
+                      await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'in', lastCheckIn: recordData.checkIn });
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.WRITE, 'attendance');
                     }
-                    
-                    await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'in', lastCheckIn: recordData.checkIn });
                   }}
                   onCheckOut={async (staffId) => {
-                    const sid = staffId || user.id;
-                    // Find the most recent record with no check-out for this user
-                    const record = [...attendance]
-                      .filter(a => a.staffId === sid && !a.checkOut && a.checkIn !== 'OVERRIDE')
-                      .sort((a, b) => b.date.localeCompare(a.date))[0];
+                    try {
+                      const sid = staffId || user.id;
+                      // Find the most recent record with no check-out for this user
+                      const record = [...attendance]
+                        .filter(a => a.staffId === sid && !a.checkOut && a.checkIn !== 'OVERRIDE')
+                        .sort((a, b) => b.date.localeCompare(a.date))[0];
 
-                    if (record) {
-                      const now = new Date();
-                      const checkOut = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                      const checkInDate = record.checkInRaw ? new Date(record.checkInRaw) : new Date(record.date + 'T09:00:00');
-                      const hoursWorked = Math.round(((now.getTime() - checkInDate.getTime()) / (1000 * 60 * 60)) * 10) / 10;
-                      await updateDoc(doc(db, 'attendance', record.id), { checkOut, hoursWorked }); 
-                      await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'out' });
-                    } else {
-                      // Fallback: if no active record found, just reset status
-                      await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'out' });
+                      if (record) {
+                        const now = new Date();
+                        const checkOut = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        const checkInDate = record.checkInRaw ? new Date(record.checkInRaw) : new Date(record.date + 'T09:00:00');
+                        const hoursWorked = Math.round(((now.getTime() - checkInDate.getTime()) / (1000 * 60 * 60)) * 10) / 10;
+                        await updateDoc(doc(db, 'attendance', record.id), { checkOut, hoursWorked }); 
+                        await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'out' });
+                      } else {
+                        // Fallback: if no active record found, just reset status
+                        await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'out' });
+                      }
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.WRITE, 'attendance');
                     }
                   }}
                   onRequestLeave={async (req) => {
-                    await addDoc(collection(db, 'leaveRequests'), { ...req, createdAt: serverTimestamp() });
+                    try {
+                      await addDoc(collection(db, 'leaveRequests'), { ...req, createdAt: serverTimestamp() });
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.CREATE, 'leaveRequests');
+                    }
                   }}
                   onUpdateAttendance={async (id, data) => {
-                    await updateDoc(doc(db, 'attendance', id), data as any);
+                    try {
+                      await updateDoc(doc(db, 'attendance', id), data as any);
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.UPDATE, `attendance/${id}`);
+                    }
                   }}
                   onUpdateLeave={async (id, data) => {
-                    await updateDoc(doc(db, 'leaveRequests', id), data as any);
+                    try {
+                      await updateDoc(doc(db, 'leaveRequests', id), data as any);
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.UPDATE, `leaveRequests/${id}`);
+                    }
                   }}
                   onDeleteLeave={async (id) => {
-                    await deleteDoc(doc(db, 'leaveRequests', id));
+                    try {
+                      await deleteDoc(doc(db, 'leaveRequests', id));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.DELETE, `leaveRequests/${id}`);
+                    }
                   }}
                   onAddAttendance={async (data) => {
-                    await addDoc(collection(db, 'attendance'), { ...data, createdAt: serverTimestamp() });
+                    try {
+                      await addDoc(collection(db, 'attendance'), { ...data, createdAt: serverTimestamp() });
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.CREATE, 'attendance');
+                    }
                   }}
                   onDeleteAttendance={async (id) => {
-                    await deleteDoc(doc(db, 'attendance', id));
+                    try {
+                      await deleteDoc(doc(db, 'attendance', id));
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.DELETE, `attendance/${id}`);
+                    }
                   }}
                   onUpdateUser={async (id, data) => {
                     try {
@@ -3568,16 +3602,56 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                       handleFirestoreError(err, OperationType.UPDATE, `profiles/${id}`);
                     }
                   }}
+                  onResetTimeClock={async (staffId) => {
+                    try {
+                      // 1. Delete all attendance
+                      const userAttendance = attendance.filter(a => a.staffId === staffId);
+                      const attPromises = userAttendance.map(a => deleteDoc(doc(db, 'attendance', a.id)));
+                      
+                      // 2. Delete all leaves
+                      const userLeaves = leaveRequests.filter(l => l.staffId === staffId);
+                      const leavePromises = userLeaves.map(l => deleteDoc(doc(db, 'leaveRequests', l.id)));
+                      
+                      await Promise.all([...attPromises, ...leavePromises]);
+                      
+                      // 3. Reset profile status
+                      await updateDoc(doc(db, 'profiles', staffId), {
+                        checkInStatus: 'out',
+                        lastCheckIn: '',
+                        remainingCompOff: 0,
+                        updatedAt: serverTimestamp()
+                      });
+                      
+                      alert('Time clock records reset successfully.');
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.DELETE, `timeclock/reset/${staffId}`);
+                    }
+                  }}
                 />
               )}
               {activeTab === 'calendar' && (
-                <CalendarView projects={projects} leaveRequests={leaveRequests} assignments={assignments} calendarConfig={calendarConfig} user={user} />
+                <CalendarView 
+                  projects={projects} 
+                  leaveRequests={leaveRequests} 
+                  assignments={assignments} 
+                  calendarConfig={calendarConfig} 
+                  user={user} 
+                  staff={staff}
+                />
               )}
               {activeTab === 'admin' && (
                 <AdminSettingsView 
                   config={calendarConfig} 
                   onUpdateConfig={handleUpdateCalendarConfig} 
                   brandSettings={settings}
+                  users={staff}
+                  onUpdateUserRole={async (id, role) => {
+                    try {
+                      await updateDoc(doc(db, 'profiles', id), { role: role as UserRole });
+                    } catch (err) {
+                      handleFirestoreError(err, OperationType.UPDATE, `profiles/${id}`);
+                    }
+                  }}
                 />
               )}
               {activeTab === 'projects' && (

@@ -7,6 +7,7 @@ import { AttendanceRecord, LeaveRequest, User, LeaveType, LeaveStatus, CalendarC
 interface Props {
   user: User;
   users?: User[];
+  currentUserEmail?: string;
   attendance: AttendanceRecord[];
   leaveRequests: LeaveRequest[];
   calendarConfig: CalendarConfig;
@@ -19,9 +20,10 @@ interface Props {
   onUpdateLeave?: (id: string, data: Partial<LeaveRequest>) => void;
   onDeleteLeave?: (id: string) => void;
   onUpdateUser?: (id: string, data: Partial<User>) => void;
+  onResetTimeClock?: (staffId: string) => void;
 }
 
-export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, leaveRequests, calendarConfig, onCheckIn, onCheckOut, onRequestLeave, onUpdateAttendance, onAddAttendance, onDeleteAttendance, onUpdateLeave, onDeleteLeave, onUpdateUser }) => {
+export const TimeClockView: React.FC<Props> = ({ user, users = [], currentUserEmail, attendance, leaveRequests, calendarConfig, onCheckIn, onCheckOut, onRequestLeave, onUpdateAttendance, onAddAttendance, onDeleteAttendance, onUpdateLeave, onDeleteLeave, onUpdateUser, onResetTimeClock }) => {
   const [activeTab, setActiveTab] = useState<'attendance' | 'leave'>('attendance');
   const [isRequestingLeave, setIsRequestingLeave] = useState(false);
   const [newLeave, setNewLeave] = useState<Omit<LeaveRequest, 'id' | 'staffId' | 'status'>>({
@@ -32,7 +34,8 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
   });
 
   const roleLower = user.role?.toLowerCase() || '';
-  const isAdminView = ['administrator', 'admin', 'manager'].includes(roleLower);
+  const effectiveEmail = user.email || currentUserEmail;
+  const isAdminView = ['administrator', 'admin', 'manager'].includes(roleLower) || effectiveEmail?.toLowerCase().trim() === 'production@wonderweb.ae';
   const [selectedUserId, setSelectedUserId] = useState<string>(user.id);
   const latestSelf = users.find(u => u.id === user.id) || user;
   const targetUser = isAdminView ? (users.find(u => u.id === selectedUserId) || latestSelf) : latestSelf;
@@ -683,6 +686,16 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
                 className="flex-1 py-3 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl border border-[var(--border-color)] text-[var(--text-secondary)] hover:border-brand-blue hover:text-brand-blue transition-all flex items-center justify-center gap-2"
               >
                 <Settings size={14} /> Bulk Update Hours
+              </button>
+              <button 
+                onClick={() => {
+                  if (window.confirm(`Are you SURE you want to RESET all attendance and leave records for ${targetUser.name}? This cannot be undone.`)) {
+                    onResetTimeClock?.(targetUser.id);
+                  }
+                }}
+                className="flex-1 py-3 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl border border-red-500/30 text-red-500 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"
+              >
+                <Trash2 size={14} /> Reset Records
               </button>
             </div>
           )}

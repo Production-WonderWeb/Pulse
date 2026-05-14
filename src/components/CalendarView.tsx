@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths } from 'date-fns';
 import { ChevronLeft, ChevronRight, User as UserIcon, Users } from 'lucide-react';
 import { Project, LeaveRequest, ProjectResourceAssignment, CalendarConfig, User } from '../types';
+import { cn } from '../lib/utils';
 
 interface Props {
   projects: Project[];
@@ -9,9 +10,10 @@ interface Props {
   assignments: ProjectResourceAssignment[];
   calendarConfig: CalendarConfig;
   user: User;
+  staff: User[];
 }
 
-export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignments, calendarConfig, user }) => {
+export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignments, calendarConfig, user, staff }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [viewMode, setViewMode] = useState<'all' | 'mine'>(user.role === 'Staff' ? 'mine' : 'all');
 
@@ -67,89 +69,120 @@ export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignm
       : (leaveRequests || []);
 
     visibleLeaves.filter(l => l.status === 'APPROVED').forEach(l => {
-        if (dateStr >= l.startDate && dateStr <= l.endDate) {
-            events.push({ title: viewMode === 'mine' ? (l.staffId === user.id ? 'My Leave' : 'Leave') : `Leave (${l.staffId})`, type: 'leave' });
-        }
+      if (dateStr >= l.startDate && dateStr <= l.endDate) {
+        const staffName = staff.find(s => s.id === l.staffId)?.name || l.staffId;
+        events.push({ 
+          title: viewMode === 'mine' ? 'My Leave' : `Leave: ${staffName}`, 
+          type: 'leave' 
+        });
+      }
     });
 
     return events;
   };
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-        <div className="flex items-center gap-4">
-          <h2 className="text-xl font-black">{format(currentMonth, 'MMMM yyyy')}</h2>
+    <div className="p-4 md:p-6 space-y-6 pb-24 h-full overflow-y-auto">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-6">
+        <div>
+          <h2 className="text-2xl font-black text-[var(--text-primary)] uppercase tracking-tight">{format(currentMonth, 'MMMM yyyy')}</h2>
+          <p className="text-[10px] text-[var(--text-secondary)] font-black uppercase tracking-[0.2em] mt-1">Operational Timeline Matrix</p>
+        </div>
+        
+        <div className="flex flex-wrap gap-4 items-center">
+          <div className="flex bg-[var(--bg-secondary)] p-1 rounded-2xl border border-[var(--border-color)]">
+            <button
+              onClick={() => setViewMode('mine')}
+              className={`flex items-center gap-2 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                viewMode === 'mine' 
+                  ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/20' 
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <UserIcon size={14} />
+              My View
+            </button>
+            <button
+              onClick={() => setViewMode('all')}
+              className={`flex items-center gap-2 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                viewMode === 'all' 
+                  ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/20' 
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <Users size={14} />
+              Unified
+            </button>
+          </div>
+
           <div className="flex gap-2">
               <button 
                 onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-                className="p-1 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors border border-transparent hover:border-[var(--border-color)]"
+                className="w-10 h-10 flex items-center justify-center bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-brand-blue transition-all"
               >
                 <ChevronLeft size={20} />
               </button>
               <button 
                 onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-                className="p-1 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors border border-transparent hover:border-[var(--border-color)]"
+                className="w-10 h-10 flex items-center justify-center bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-brand-blue transition-all"
               >
                 <ChevronRight size={20} />
               </button>
           </div>
         </div>
-        
-        <div className="flex bg-[var(--bg-secondary)] p-1 rounded-xl border border-[var(--border-color)] self-start md:self-auto">
-          <button
-            onClick={() => setViewMode('mine')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-              viewMode === 'mine' 
-                ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/20' 
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            <UserIcon size={14} />
-            My Calendar
-          </button>
-          <button
-            onClick={() => setViewMode('all')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-              viewMode === 'all' 
-                ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/20' 
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            <Users size={14} />
-            Everyone
-          </button>
-        </div>
       </div>
-      <div className="grid grid-cols-7 gap-1">
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-          <div key={day} className="text-center text-[10px] font-black uppercase text-[var(--text-secondary)] py-2">{day}</div>
-        ))}
-        {/* Placeholder for days of the week before the 1st of the month */}
-        {Array.from({ length: startOffset }).map((_, i) => (
-          <div key={`empty-${i}`} className="h-24 bg-transparent border border-transparent rounded-lg" />
-        ))}
-        {days.map(day => {
-            const events = getEventsForDay(day);
-            return (
-                <div key={day.toISOString()} className="h-24 bg-[var(--bg-secondary)] rounded-xl p-2 border border-[var(--border-color)] overflow-y-auto hover:border-brand-blue/30 transition-all flex flex-col">
-                    <p className="text-[10px] font-black text-[var(--text-secondary)] mb-1">{format(day, 'd')}</p>
-                    <div className="space-y-0.5">
-                      {events.map((e, i) => (
-                          <div key={i} className={`text-[7px] font-black uppercase p-1 rounded-md truncate leading-none ${
-                              e.type === 'project' ? 'bg-blue-500 text-white' : 
-                              e.type === 'leave' ? 'bg-green-500 text-white' :
-                              e.type === 'holiday' ? 'bg-red-500 text-white' :
-                              e.type === 'weekend' ? 'bg-gray-100 text-gray-400 border border-gray-200' : 
-                              'bg-gray-500 text-white'
-                          }`}>
-                              {e.title}
-                          </div>
-                      ))}
-                    </div>
-                </div>
-            )
-        })}
+
+      <div className="bg-[var(--bg-secondary)] rounded-[2.5rem] border border-[var(--border-color)] overflow-hidden shadow-2xl">
+        <div className="grid grid-cols-7 border-b border-[var(--border-color)] bg-[var(--bg-primary)]/50">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+            <div key={day} className="text-center text-[10px] font-black uppercase text-[var(--text-secondary)] py-4 tracking-widest">{day}</div>
+          ))}
+        </div>
+        
+        <div className="grid grid-cols-7 gap-[1px] bg-[var(--border-color)]">
+          {Array.from({ length: startOffset }).map((_, i) => (
+            <div key={`empty-${i}`} className="h-32 bg-[var(--bg-primary)]/30" />
+          ))}
+          {days.map(day => {
+              const events = getEventsForDay(day);
+              const isToday = isSameDay(day, new Date());
+              return (
+                  <div key={day.toISOString()} className={cn(
+                    "h-32 bg-[var(--bg-secondary)] p-3 flex flex-col gap-2 transition-all hover:bg-[var(--bg-primary)]/50",
+                    isToday && "ring-2 ring-inset ring-brand-blue/30"
+                  )}>
+                      <div className="flex justify-between items-center">
+                        <span className={cn(
+                          "text-[10px] font-black",
+                          isToday ? "text-brand-blue" : "text-[var(--text-secondary)]"
+                        )}>{format(day, 'd')}</span>
+                        {isToday && <div className="w-1.5 h-1.5 rounded-full bg-brand-blue" />}
+                      </div>
+                      
+                      <div className="flex-1 space-y-1 overflow-y-auto scrollbar-hide">
+                        {events.map((e, i) => (
+                            <div key={i} className={cn(
+                                "text-[7px] font-black uppercase p-1.5 rounded-lg truncate leading-none flex items-center gap-1.5",
+                                e.type === 'project' ? 'bg-brand-blue/10 text-brand-blue border border-brand-blue/20' : 
+                                e.type === 'leave' ? 'bg-brand-green/10 text-brand-green border border-brand-green/20' :
+                                e.type === 'holiday' ? 'bg-brand-orange/10 text-brand-orange border border-brand-orange/20' :
+                                e.type === 'weekend' ? 'bg-[var(--bg-primary)] text-[var(--text-secondary)] opacity-40' : 
+                                'bg-brand-grey/10 text-brand-grey border border-brand-grey/20'
+                            )}>
+                                <div className={cn(
+                                  "w-1 h-1 rounded-full shrink-0",
+                                  e.type === 'project' ? 'bg-brand-blue' : 
+                                  e.type === 'leave' ? 'bg-brand-green' :
+                                  e.type === 'holiday' ? 'bg-brand-orange' : 'bg-[var(--text-secondary)]'
+                                )} />
+                                {e.title}
+                            </div>
+                        ))}
+                      </div>
+                  </div>
+              )
+          })}
+        </div>
       </div>
     </div>
   );
