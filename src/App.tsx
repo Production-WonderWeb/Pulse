@@ -473,8 +473,11 @@ const Sidebar = ({ activeTab, setActiveTab, role, onLogout, settings, userEmail 
   );
 };
 
-const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, settings }: { title: string, user: User, theme: 'light' | 'dark', toggleTheme: () => void, onLogout?: () => void, onUpdateUser?: (updated: User) => void, settings: SystemSettings | null }) => {
+const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, settings, notifications = [], onMarkNotificationRead }: { title: string, user: User, theme: 'light' | 'dark', toggleTheme: () => void, onLogout?: () => void, onUpdateUser?: (updated: User) => void, settings: SystemSettings | null, notifications?: Notification[], onMarkNotificationRead?: (id: string) => void }) => {
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const unreadCount = notifications.filter(n => !n.read && n.userId === user.id).length;
 
   return (
     <header className="sticky top-0 z-40 bg-[var(--bg-primary)]/80 backdrop-blur-xl px-4 md:px-8 py-4 flex justify-between items-center border-b border-[var(--border-color)]">
@@ -524,13 +527,50 @@ const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, setti
           >
             {theme === 'dark' ? <BarChart3 size={18} /> : <BarChart3 size={18} />}
           </button>
-          <button 
-            className="p-1.5 text-[var(--text-secondary)] hover:text-brand-orange hover:bg-[var(--bg-primary)] rounded-lg transition-all relative"
-            title="Notifications"
-          >
-            <Bell size={18} />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-orange border-2 border-[var(--bg-secondary)] rounded-full"></span>
-          </button>
+          <div className="relative">
+            <button 
+              onClick={() => { setShowNotifications(!showNotifications); setShowRoleSwitcher(false); }}
+              className={`p-1.5 rounded-lg transition-all relative ${showNotifications ? 'bg-brand-orange/10 text-brand-orange' : 'text-[var(--text-secondary)] hover:text-brand-orange hover:bg-[var(--bg-primary)]'}`}
+              title="Notifications"
+            >
+              <Bell size={18} />
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-orange border-2 border-[var(--bg-secondary)] rounded-full animate-pulse"></span>
+              )}
+            </button>
+            
+            {showNotifications && (
+              <div className="absolute top-12 right-0 bg-[var(--bg-secondary)] shadow-2xl border border-[var(--border-color)] rounded-2xl p-4 w-80 z-50 animate-in fade-in slide-in-from-top-2 duration-200 h-96 overflow-y-auto">
+                <div className="flex items-center justify-between mb-4 pb-2 border-b border-[var(--border-color)]">
+                  <h3 className="font-black text-xs uppercase tracking-widest text-[var(--text-primary)]">Notifications</h3>
+                  {unreadCount > 0 && <span className="bg-brand-orange/10 text-brand-orange px-2 py-0.5 rounded-full text-[9px] font-black">{unreadCount} New</span>}
+                </div>
+                
+                <div className="space-y-3">
+                  {notifications.filter(n => n.userId === user.id).sort((a, b) => b.createdAt?.toMillis?.() !== undefined ? b.createdAt.toMillis() - a.createdAt?.toMillis?.() : 0).map(n => (
+                    <div 
+                      key={n.id} 
+                      onClick={() => { if (!n.read && onMarkNotificationRead) onMarkNotificationRead(n.id); }}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer ${n.read ? 'bg-[var(--bg-primary)] border-[var(--border-color)]/50 opacity-60' : 'bg-[var(--bg-primary)] border-brand-orange/30 shadow-sm'}`}
+                    >
+                      <div className="flex gap-2 items-start">
+                        <div className={`w-2 h-2 rounded-full mt-1 shrink-0 ${n.read ? 'bg-transparent' : 'bg-brand-orange'}`}></div>
+                        <div>
+                          <p className="text-[10px] font-black text-[var(--text-primary)] mb-1 leading-tight">{n.title}</p>
+                          <p className="text-[9px] text-[var(--text-secondary)] leading-relaxed">{n.message}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {notifications.filter(n => n.userId === user.id).length === 0 && (
+                    <div className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest text-center py-8">
+                      No notifications
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -3127,6 +3167,7 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
   const [calendarConfig, setCalendarConfig] = useState<CalendarConfig>({ workingWeekends: [0, 6], publicHolidays: [], forcedWorkingDates: [] });
   const [assignments, setAssignments] = useState<ProjectResourceAssignment[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Batch update assignments for a project
   const handleUpdateAssignments = async (projectId: string, newAssignments: Omit<ProjectResourceAssignment, 'id' | 'projectId'>[]) => {
@@ -3152,6 +3193,25 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
       });
       await Promise.all(addPromises);
       
+      const oldStaffIds = assignments.filter(a => a.projectId === projectId && a.type === 'staff').map(a => a.resourceId);
+      const newStaffIds = newAssignments.filter(a => a.type === 'staff').map(a => a.resourceId);
+      const addedStaff = newStaffIds.filter(id => !oldStaffIds.includes(id));
+
+      if (addedStaff.length > 0) {
+        const projName = projects.find(p => p.id === projectId)?.name || 'a project';
+        const notifPromises = addedStaff.map(sid => 
+          addDoc(collection(db, 'notifications'), {
+            userId: sid,
+            title: 'Project Assignment',
+            message: `You have been assigned to ${projName}.`,
+            read: false,
+            type: 'project',
+            createdAt: serverTimestamp()
+          }).catch(console.error)
+        );
+        await Promise.all(notifPromises);
+      }
+      
       console.log(`Assignments synced for project ${projectId}`);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `assignments/${projectId}`);
@@ -3173,7 +3233,8 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
       { name: 'attendance', setter: setAttendance },
       { name: 'leaveRequests', setter: setLeaveRequests },
       { name: 'hiredEquipment', setter: setHiredEquipment },
-      { name: 'profiles', setter: setStaff }
+      { name: 'profiles', setter: setStaff },
+      { name: 'notifications', setter: setNotifications }
     ];
 
     const unsubscribes = collections.map(col => {
@@ -3337,6 +3398,15 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
           onLogout={onLogout} 
           onUpdateUser={handleUpdateUser} 
           settings={settings}
+          notifications={notifications}
+          onMarkNotificationRead={async (id) => {
+            if (!db) return;
+            try {
+              await updateDoc(doc(db, 'notifications', id), { read: true });
+            } catch (err) {
+              console.error(err);
+            }
+          }}
         />
         
         <main className="flex-1 overflow-y-auto overflow-x-hidden md:px-8 pb-32 md:pb-8">
@@ -3543,8 +3613,16 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                         const checkOut = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                         const checkInDate = record.checkInRaw ? new Date(record.checkInRaw) : new Date(record.date + 'T09:00:00');
                         const hoursWorked = Math.round(((now.getTime() - checkInDate.getTime()) / (1000 * 60 * 60)) * 10) / 10;
-                        await updateDoc(doc(db, 'attendance', record.id), { checkOut, hoursWorked }); 
-                        await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'out' });
+
+                        const recordUpdate: any = { checkOut, hoursWorked };
+                        const profileUpdate: any = { checkInStatus: 'out' };
+
+                        const [y, m, d] = record.date.split('-').map(Number);
+                        const localDate = new Date(y, m - 1, d, 12, 0, 0);
+                        const dayOfWeek = localDate.getDay();
+                        
+                        await updateDoc(doc(db, 'attendance', record.id), recordUpdate); 
+                        await updateDoc(doc(db, 'profiles', sid), profileUpdate);
                       } else {
                         // Fallback: if no active record found, just reset status
                         await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'out' });
@@ -3556,6 +3634,21 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                   onRequestLeave={async (req) => {
                     try {
                       await addDoc(collection(db, 'leaveRequests'), { ...req, createdAt: serverTimestamp() });
+                      
+                      const admins = staff.filter(s => ['administrator', 'admin'].includes(s.role?.toLowerCase() || ''));
+                      const senderName = staff.find(s => s.id === req.staffId)?.name || 'Someone';
+                      for (const admin of admins) {
+                        try {
+                          await addDoc(collection(db, 'notifications'), {
+                            userId: admin.id,
+                            title: 'New Leave Request',
+                            message: `${senderName} has requested ${req.type.replace('_', ' ')} from ${req.startDate} to ${req.endDate}.`,
+                            read: false,
+                            type: 'leave',
+                            createdAt: serverTimestamp()
+                          });
+                        } catch(e){}
+                      }
                     } catch (err) {
                       handleFirestoreError(err, OperationType.CREATE, 'leaveRequests');
                     }

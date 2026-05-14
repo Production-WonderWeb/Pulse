@@ -238,11 +238,25 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], currentUserEm
   };
   
   const approvedLeaves = myLeaves.filter(l => l.status === LeaveStatus.APPROVED);
-  const earlyLeaveCount = approvedLeaves.filter(l => l.type === LeaveType.EARLY_LEAVE).length;
   const compOffCalculated = approvedLeaves.filter(l => l.type === LeaveType.COMP_OFF).length;
 
   const yearlyLeaveDaysBase = Number(targetUser.yearlyLeaveDays ?? 30);
-  const earnedCompOffBalance = Number(targetUser.remainingCompOff ?? 0);
+  const baseCompOffBalance = Number(targetUser.remainingCompOff ?? 0);
+
+  const calculateDynamicallyEarnedCompOff = () => {
+    let earned = 0;
+    const records = attendance.filter(a => a.staffId === targetUser.id && (a.hoursWorked || 0) > 0);
+    for (const record of records) {
+      if (!record.date) continue;
+      // If expected hours were 0 but they worked, they earn 1 comp off day
+      if (getExpectedHours(record.date, record) === 0) {
+        earned += 1;
+      }
+    }
+    return earned;
+  };
+
+  const earnedCompOffBalance = baseCompOffBalance + calculateDynamicallyEarnedCompOff();
 
   const calculateUsedDays = (leaveType: LeaveType) => {
     return approvedLeaves
@@ -480,7 +494,7 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], currentUserEm
                 />
               </div>
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[8px] font-black uppercase text-[var(--text-secondary)]">Comp Off</span>
+                <span className="text-[8px] font-black uppercase text-[var(--text-secondary)]">Manual Comp Off</span>
                 <input 
                   type="number" 
                   value={limitsForm.remainingCompOff} 
@@ -528,17 +542,6 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], currentUserEm
                     <span className="text-[9px] font-black text-[var(--text-secondary)] uppercase">/ {earnedCompOffBalance} earned</span>
                   </div>
                   <p className="text-[8px] text-[var(--text-secondary)]">Used: {usedCompOffDays} days</p>
-                </div>
-              </div>
-              
-              <div className="flex justify-between items-center mt-2 pt-2 border-t border-[var(--border-color)]">
-                <div>
-                  <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Early Leve</p>
-                  <p className="text-xs font-black text-brand-orange">{earlyLeaveCount}</p>
-                </div>
-                <div>
-                   <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Late Counts</p>
-                   <p className="text-xs font-black text-red-500">{attendance.filter(a => a.staffId === targetUser.id && a.checkIn && a.checkIn > '09:05').length}</p>
                 </div>
               </div>
             </>

@@ -123,15 +123,20 @@ service cloud.firestore {
 
     // Shared "Manager or Above" CRUD collections
     match /{collection}/{itemId} {
-      allow read: if isSignedIn() && collection in ['clients', 'vendors', 'assignments', 'attendance', 'leaveRequests', 'maintenanceTasks', 'freelancers', 'hiredEquipment'];
+      allow read: if isSignedIn() && collection in ['clients', 'vendors', 'assignments', 'attendance', 'leaveRequests', 'maintenanceTasks', 'freelancers', 'hiredEquipment', 'notifications'];
       
       // Allow full CRUD for Managers
-      allow write: if isManager() && collection in ['clients', 'vendors', 'assignments', 'attendance', 'leaveRequests', 'maintenanceTasks', 'freelancers', 'hiredEquipment'];
+      allow write: if isManager() && collection in ['clients', 'vendors', 'assignments', 'attendance', 'leaveRequests', 'maintenanceTasks', 'freelancers', 'hiredEquipment', 'notifications'];
       
       // Self-service for attendance and leaveRequests
       allow create: if isSignedIn() && collection in ['attendance', 'leaveRequests'] && isOwner(incoming().staffId);
       allow update: if isSignedIn() && collection in ['attendance', 'leaveRequests'] && isOwner(existing().staffId);
       allow delete: if isSignedIn() && collection in ['attendance', 'leaveRequests'] && isOwner(existing().staffId);
+      
+      // Self-service for notifications
+      allow create: if isSignedIn() && collection == 'notifications';
+      allow update: if isSignedIn() && collection == 'notifications' && isOwner(existing().userId);
+      allow delete: if isSignedIn() && collection == 'notifications' && isOwner(existing().userId);
     }
 
     // Settings

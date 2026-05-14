@@ -143,6 +143,16 @@ export interface Project {
   imageUrl?: string;
 }
 
+export interface Notification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  read: boolean;
+  type: 'leave' | 'project' | 'general';
+  createdAt?: any;
+}
+
 export interface LeaveRequest {
   id: string;
   staffId: string;
