@@ -3315,22 +3315,35 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                   onCheckIn={async (staffId) => {
                     const sid = staffId || user.id;
                     const now = new Date();
-                    const record = {
-                      staffId: sid,
-                      date: now.toISOString().split('T')[0],
+                    const dateStr = now.toISOString().split('T')[0];
+                    
+                    // Check if an override or existing record for today exists
+                    const existing = attendance.find(a => a.staffId === sid && a.date === dateStr);
+                    
+                    const recordData = {
                       checkIn: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                       checkInRaw: now.toISOString(),
                       hoursWorked: 0,
-                      createdAt: serverTimestamp()
                     };
-                    await addDoc(collection(db, 'attendance'), record);
-                    await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'in', lastCheckIn: record.checkIn });
+
+                    if (existing) {
+                      await updateDoc(doc(db, 'attendance', existing.id), recordData);
+                    } else {
+                      await addDoc(collection(db, 'attendance'), {
+                        ...recordData,
+                        staffId: sid,
+                        date: dateStr,
+                        createdAt: serverTimestamp()
+                      });
+                    }
+                    
+                    await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'in', lastCheckIn: recordData.checkIn });
                   }}
                   onCheckOut={async (staffId) => {
                     const sid = staffId || user.id;
                     // Find the most recent record with no check-out for this user
                     const record = [...attendance]
-                      .filter(a => a.staffId === sid && !a.checkOut)
+                      .filter(a => a.staffId === sid && !a.checkOut && a.checkIn !== 'OVERRIDE')
                       .sort((a, b) => b.date.localeCompare(a.date))[0];
 
                     if (record) {

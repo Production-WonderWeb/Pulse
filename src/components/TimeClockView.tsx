@@ -1,6 +1,7 @@
 // Force Vite reload
 import React, { useState } from 'react';
-import { Clock, Plus, Send, Edit3, Check, X, Shield, Settings, Trash2 } from 'lucide-react';
+import { format } from 'date-fns';
+import { Clock, Plus, Send, Edit3, Check, X, Shield, Settings, Trash2, Download } from 'lucide-react';
 import { AttendanceRecord, LeaveRequest, User, LeaveType, LeaveStatus, CalendarConfig } from '../types';
 
 interface Props {
@@ -60,57 +61,154 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
   const myAttendance = attendance
     .filter(a => a.staffId === targetUser.id)
     .sort((a, b) => a.date.localeCompare(b.date));
+
+  const visibleAttendance = myAttendance.filter(a => a.checkIn !== 'OVERRIDE');
   const myLeaves = leaveRequests.filter(l => l.staffId === targetUser.id);
 
   // Stats calculations
   const targetStdHours = targetUser.standardWorkingHours || 9;
   
-  // Calculate expected hours for the current month
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfToday = new Date();
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   
-  let expectedMonthHours = 0;
-  let dIter = new Date(startOfMonth);
-  while (dIter <= endOfToday) {
-    const dateStr = dIter.toISOString().split('T')[0];
-    const dayOfWeek = dIter.getDay();
+  const getExpectedHours = (dateStr: string, record?: AttendanceRecord) => {
+    // Robust date parsing to avoid timezone-shifted day-of-week checks
+    const [y, m, day] = dateStr.split('-').map(Number);
+    const d = new Date(y, m - 1, day);
+    const dayOfWeek = d.getDay();
     
-    // Check if it's a work day
     const isPublicHoliday = (calendarConfig.publicHolidays || []).some(h => 
       dateStr >= h.startDate && dateStr <= h.endDate
     );
-    const isWeekend = (calendarConfig.workingWeekends || [0, 6]).includes(dayOfWeek);
+    const isWeekendDays = (calendarConfig.workingWeekends && calendarConfig.workingWeekends.length > 0) 
+      ? calendarConfig.workingWeekends 
+      : [0, 6];
+    const isWeekend = isWeekendDays.includes(dayOfWeek);
     const isForcedWorking = (calendarConfig.forcedWorkingDates || []).includes(dateStr);
+    const onLeave = myLeaves.some(l => 
+      l.status === LeaveStatus.APPROVED && dateStr >= l.startDate && dateStr <= l.endDate
+    );
     
-    const isWorkDay = (!isPublicHoliday && (!isWeekend || isForcedWorking));
-    
-    if (isWorkDay) {
-      // Check if there's a bulk/individual override for standard hours on this day
-      const record = myAttendance.find(a => a.date === dateStr);
-      expectedMonthHours += record?.standardHours ?? targetStdHours;
-    } else {
-      // Even if not a work day, if there's a record, it might have standard hours? 
-      // Usually not, but if someone worked a weekend by choice, standard hours is 0 unless forced.
-      const record = myAttendance.find(a => a.date === dateStr);
-      if (record && record.standardHours) {
-        expectedMonthHours += record.standardHours;
-      }
+    if (onLeave) return 0;
+
+    const isBasicWorkDay = !isPublicHoliday && !isWeekend;
+    // Overridden to work if forced working date OR if admin manually set standard hours > 0 on a non-work day
+    const isOverriddenToWork = (isPublicHoliday || isWeekend) && (isForcedWorking || (record?.standardHours ?? 0) > 0);
+
+    if (isBasicWorkDay) {
+      // For a normal work day, return the override or target std hours
+      return record?.standardHours ?? targetStdHours;
     }
     
-    dIter.setDate(dIter.getDate() + 1);
+    if (isOverriddenToWork) {
+      return record?.standardHours ?? targetStdHours;
+    }
+
+    return 0; // Weekend or Holiday without override
+  };
+
+  let expectedMonthHours = 0;
+  let expectedActuallyWorkedHoursTotal = 0;
+  let dIterFull = new Date(startOfMonth);
+  while (dIterFull <= endOfMonth) {
+    const dateStr = format(dIterFull, 'yyyy-MM-dd');
+    const record = myAttendance.find(a => a.date === dateStr);
+    
+    expectedMonthHours += getExpectedHours(dateStr, record);
+    
+    if (record && record.checkIn !== 'OVERRIDE') {
+       expectedActuallyWorkedHoursTotal += getExpectedHours(dateStr, record);
+    }
+    
+    dIterFull.setDate(dIterFull.getDate() + 1);
   }
 
-  const actualMonthHours = myAttendance
-    .filter(a => {
-      const d = new Date(a.date);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    })
-    .reduce((sum, a) => sum + a.hoursWorked, 0);
+  const currentMonthAttendance = myAttendance.filter(a => {
+    const [y, m] = a.date.split('-');
+    return parseInt(y) === now.getFullYear() && parseInt(m) === (now.getMonth() + 1);
+  });
 
-  const extraHours = myAttendance.reduce((sum, a) => sum + Math.max(0, a.hoursWorked - (a.standardHours ?? targetStdHours)), 0);
-  const lessHours = myAttendance.reduce((sum, a) => sum + (a.checkOut ? Math.max(0, (a.standardHours ?? targetStdHours) - a.hoursWorked) : 0), 0);
+  const visibleMonthAttendance = currentMonthAttendance.filter(a => a.checkIn !== 'OVERRIDE');
+
+  const extraHours = visibleMonthAttendance.reduce((sum, a) => sum + Math.max(0, (a.hoursWorked || 0) - getExpectedHours(a.date, a)), 0);
+  const lessHours = visibleMonthAttendance.reduce((sum, a) => sum + (a.checkOut && a.checkOut !== 'OVERRIDE' ? Math.max(0, getExpectedHours(a.date, a) - (a.hoursWorked || 0)) : 0), 0);
   const netHours = extraHours - lessHours;
+
+  const actualMonthHours = visibleMonthAttendance.reduce((sum, a) => sum + (a.hoursWorked || 0), 0);
+
+  const handleDownloadAttendance = () => {
+    const headers = [
+      'Date', 
+      'Day', 
+      'Check In', 
+      'Check Out', 
+      'Hours Worked', 
+      'Standard Hours', 
+      'Difference', 
+      'Overtime', 
+      'Status'
+    ];
+    
+    const rows: string[][] = [];
+    const d = new Date(startOfMonth);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
+    while (d <= end) {
+      const dateStr = format(d, 'yyyy-MM-dd');
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
+      const record = myAttendance.find(a => a.date === dateStr);
+      const leave = myLeaves.find(l => dateStr >= l.startDate && dateStr <= l.endDate && l.status === LeaveStatus.APPROVED);
+      const isPublicHoliday = (calendarConfig.publicHolidays || []).some(h => 
+        dateStr >= h.startDate && dateStr <= h.endDate
+      );
+      const isWeekendDays = (calendarConfig.workingWeekends && calendarConfig.workingWeekends.length > 0) 
+        ? calendarConfig.workingWeekends 
+        : [0, 6];
+      const isWeekend = isWeekendDays.includes(d.getDay());
+      const isForcedWorking = (calendarConfig.forcedWorkingDates || []).includes(dateStr);
+      
+      let status = 'Working Day';
+      if (isPublicHoliday) status = 'Public Holiday';
+      else if (isWeekend && !isForcedWorking) status = 'Weekend';
+      else if (isForcedWorking) status = 'Working Weekend (Forced)';
+      if (leave) status = `Leave (${leave.type})`;
+
+      const isRealAttendance = record && record.checkIn !== 'OVERRIDE';
+      const std = getExpectedHours(dateStr, record);
+      const actualHours = isRealAttendance ? (record.hoursWorked || 0) : 0;
+      const diff = isRealAttendance ? (actualHours - std) : (std > 0 ? -std : 0);
+      
+      rows.push([
+        dateStr,
+        dayName,
+        isRealAttendance ? record.checkIn : '-',
+        isRealAttendance ? (record.checkOut || 'Active') : '-',
+        actualHours.toFixed(1),
+        std.toFixed(1),
+        diff.toFixed(1),
+        Math.max(0, diff).toFixed(1),
+        status
+      ]);
+      
+      d.setDate(d.getDate() + 1);
+    }
+
+    const csvContent = [
+      `Attendance Report - ${targetUser.name} - ${format(now, 'MMMM yyyy')}`,
+      headers.join(','),
+      ...rows.map(r => r.map(c => `"${c}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Attendance_${targetUser.name.replace(/\s+/g, '_')}_${format(now, 'yyyy-MM-dd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
   
   const approvedLeaves = myLeaves.filter(l => l.status === LeaveStatus.APPROVED);
   const earlyLeaveCount = approvedLeaves.filter(l => l.type === LeaveType.EARLY_LEAVE).length;
@@ -129,7 +227,10 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
       const isPublicHoliday = (calendarConfig.publicHolidays || []).some(h => 
         dateStr >= h.startDate && dateStr <= h.endDate
       );
-      const isWeekend = (calendarConfig.workingWeekends || []).includes(d.getDay());
+      const isWeekendDays = (calendarConfig.workingWeekends && calendarConfig.workingWeekends.length > 0) 
+        ? calendarConfig.workingWeekends 
+        : [0, 6];
+      const isWeekend = isWeekendDays.includes(d.getDay());
       const isForcedWorking = (calendarConfig.forcedWorkingDates || []).includes(dateStr);
       
       if (!isPublicHoliday && (!isWeekend || isForcedWorking)) {
@@ -199,6 +300,17 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
         const existing = attendance.find(a => a.staffId === u.id && a.date === dateStr);
         if (existing && onUpdateAttendance) {
           onUpdateAttendance(existing.id, { standardHours: bulkForm.standardHours });
+        } else if (onAddAttendance) {
+          // Create a "standard hours override" record even if they haven't clocked in yet
+          // Use 'OVERRIDE' as a marker so it doesn't count as a real attendance check-in
+          onAddAttendance({
+            staffId: u.id,
+            date: dateStr,
+            checkIn: 'OVERRIDE',
+            checkOut: 'OVERRIDE',
+            hoursWorked: 0,
+            standardHours: bulkForm.standardHours
+          });
         }
       });
     });
@@ -271,8 +383,9 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
               <span className="text-[9px] font-black text-[var(--text-secondary)] uppercase">Hrs</span>
             </div>
             <div className="text-right">
-              <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Month Expected: <span className="text-[var(--text-primary)]">{expectedMonthHours.toFixed(1)}</span></p>
-              <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Month Actual: <span className="text-[var(--text-primary)]">{actualMonthHours.toFixed(1)}</span></p>
+              <p className="text-[7px] font-black text-[var(--text-secondary)] uppercase" title="Total mandatory working hours for this month">Full Month Target: <span className="text-[var(--text-primary)]">{expectedMonthHours.toFixed(1)}</span></p>
+              <p className="text-[7px] font-black text-[var(--text-secondary)] uppercase" title="Sum of standard hours for days you actually worked">Target worked: <span className="text-[var(--text-primary)]">{expectedActuallyWorkedHoursTotal.toFixed(1)}</span></p>
+              <p className="text-[8px] font-black text-[var(--text-secondary)] uppercase">Month Total: <span className="text-brand-blue font-black">{actualMonthHours.toFixed(1)}</span></p>
             </div>
           </div>
         </div>
@@ -372,6 +485,15 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
             >
               Check Out
             </button>
+            {isAdminView && (
+              <button 
+                onClick={() => onUpdateUser?.(targetUser.id, { checkInStatus: 'out' })}
+                className="p-4 bg-[var(--bg-primary)] text-[var(--text-secondary)] rounded-2xl border border-[var(--border-color)] hover:text-brand-blue transition-all"
+                title="Reset Status"
+              >
+                <X size={16} />
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -458,14 +580,25 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
 
       {activeTab === 'attendance' && (
         <div className="space-y-3">
-          {isAdminView && (
-            <div className="flex gap-2">
+          <div className="flex gap-2">
+            <button 
+              onClick={handleDownloadAttendance}
+              className="flex-1 py-3 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl border border-brand-blue text-brand-blue hover:bg-brand-blue hover:text-white transition-all flex items-center justify-center gap-2"
+            >
+              <Download size={14} /> Download Sheet
+            </button>
+            {isAdminView && (
               <button 
                 onClick={() => setIsAddingAttendance(!isAddingAttendance)}
-                className="flex-1 py-3 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl border border-brand-blue text-brand-blue hover:bg-brand-blue hover:text-white transition-all flex items-center justify-center gap-2"
+                className="flex-1 py-3 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl border border-brand-blue/30 text-brand-blue hover:bg-brand-blue/10 transition-all flex items-center justify-center gap-2"
               >
                 <Plus size={14} /> Add Record
               </button>
+            )}
+          </div>
+
+          {isAdminView && (
+            <div className="flex gap-2">
               <button 
                 onClick={() => setIsBulkUpdating(!isBulkUpdating)}
                 className="flex-1 py-3 text-[9px] font-black uppercase tracking-[0.2em] rounded-xl border border-[var(--border-color)] text-[var(--text-secondary)] hover:border-brand-blue hover:text-brand-blue transition-all flex items-center justify-center gap-2"
@@ -563,7 +696,7 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
             </div>
           )}
 
-          {myAttendance.map(a => {
+          {visibleAttendance.map(a => {
             const overtime = Math.max(0, a.hoursWorked - (a.standardHours ?? targetStdHours));
             const undertime = a.checkOut ? Math.max(0, (a.standardHours ?? targetStdHours) - a.hoursWorked) : 0;
             const isEditing = editingAttendanceId === a.id;
@@ -664,7 +797,7 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], attendance, l
               </div>
             );
           })}
-          {myAttendance.length === 0 && (
+          {visibleAttendance.length === 0 && (
             <div className="text-center py-12 border-2 border-dashed border-[var(--border-color)] rounded-3xl">
               <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-[0.2em]">No attendance records found</p>
             </div>

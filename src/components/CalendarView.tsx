@@ -30,7 +30,10 @@ export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignm
     const isForcedWorking = (calendarConfig.forcedWorkingDates || []).includes(dateStr);
 
     // Check for Weekend
-    if ((calendarConfig.workingWeekends || []).includes(day.getDay()) && !isForcedWorking) {
+    const isWeekendDays = (calendarConfig.workingWeekends && calendarConfig.workingWeekends.length > 0) 
+      ? calendarConfig.workingWeekends 
+      : [0, 6];
+    if (isWeekendDays.includes(day.getDay()) && !isForcedWorking) {
       events.push({ title: 'Weekend', type: 'weekend' });
     }
 
@@ -46,7 +49,10 @@ export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignm
     
     // Filter projects
     const visibleProjects = viewMode === 'mine' 
-      ? projects.filter(p => assignments.some(a => a.projectId === p.id && a.staffId === user.id))
+      ? projects.filter(p => 
+          (p.assignedStaff || []).includes(user.id) || 
+          assignments.some(a => a.projectId === p.id && a.resourceId === user.id && a.resourceType === 'staff')
+        )
       : projects;
 
     visibleProjects.forEach(p => {
@@ -62,7 +68,7 @@ export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignm
 
     visibleLeaves.filter(l => l.status === 'APPROVED').forEach(l => {
         if (dateStr >= l.startDate && dateStr <= l.endDate) {
-            events.push({ title: viewMode === 'mine' ? 'My Leave' : 'Leave', type: 'leave' });
+            events.push({ title: viewMode === 'mine' ? (l.staffId === user.id ? 'My Leave' : 'Leave') : `Leave (${l.staffId})`, type: 'leave' });
         }
     });
 
@@ -102,19 +108,17 @@ export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignm
             <UserIcon size={14} />
             My Calendar
           </button>
-          {user.role !== 'Staff' && (
-            <button
-              onClick={() => setViewMode('all')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                viewMode === 'all' 
-                  ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/20' 
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Users size={14} />
-              Everyone
-            </button>
-          )}
+          <button
+            onClick={() => setViewMode('all')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+              viewMode === 'all' 
+                ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/20' 
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Users size={14} />
+            Everyone
+          </button>
         </div>
       </div>
       <div className="grid grid-cols-7 gap-1">
