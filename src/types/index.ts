@@ -153,6 +153,17 @@ export interface AppNotification {
   createdAt?: any;
 }
 
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  assignedTo: string[];
+  createdBy: string;
+  dueDate: string;
+  status: 'todo' | 'in-progress' | 'completed';
+  createdAt?: any;
+}
+
 export interface LeaveRequest {
   id: string;
   staffId: string;

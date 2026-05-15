@@ -49,7 +49,8 @@ import {
   DollarSign,
   Truck,
   AlertCircle,
-  MessageSquare
+  MessageSquare,
+  CheckSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -71,6 +72,7 @@ import { TimeClockView } from './components/TimeClockView';
 import { AdminSettingsView } from './components/AdminSettingsView';
 import { CalendarView } from './components/CalendarView';
 import { QRCodeScanner, DownloadQRCode } from './components/QRCodeManager';
+import { TaskView } from './components/TaskView';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { format, parseISO, min as minDateFn, max as maxDateFn } from 'date-fns';
@@ -93,7 +95,8 @@ import {
   LeaveStatus,
   SystemSettings,
   PDFExportConfig,
-  AppNotification
+  AppNotification,
+  Task
 } from './types/index';
 import { cn, formatDate } from './lib/utils';
 
@@ -424,6 +427,7 @@ const Sidebar = ({ activeTab, setActiveTab, role, onLogout, settings, userEmail 
     { id: 'projects', icon: Briefcase, label: 'Projects', roles: ['administrator', 'admin', 'manager', 'staff'] },
     { id: 'timeclock', icon: Clock, label: 'Time Clock', roles: ['administrator', 'admin', 'manager', 'staff'] },
     { id: 'calendar', icon: Calendar, label: 'Calendar', roles: ['administrator', 'admin', 'manager', 'staff'] },
+    { id: 'tasks', icon: CheckSquare, label: 'Tasks', roles: ['administrator', 'admin', 'manager', 'staff'] },
     { id: 'admin', icon: Settings, label: 'Settings', roles: ['administrator', 'admin'] },
   ].filter(t => {
     if (isAdmin) return true;
@@ -3169,6 +3173,7 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
   const [assignments, setAssignments] = useState<ProjectResourceAssignment[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
 
   // Batch update assignments for a project
   const handleUpdateAssignments = async (projectId: string, newAssignments: Omit<ProjectResourceAssignment, 'id' | 'projectId'>[]) => {
@@ -3235,7 +3240,8 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
       { name: 'leaveRequests', setter: setLeaveRequests },
       { name: 'hiredEquipment', setter: setHiredEquipment },
       { name: 'profiles', setter: setStaff },
-      { name: 'notifications', setter: setNotifications }
+      { name: 'notifications', setter: setNotifications },
+      { name: 'tasks', setter: setTasks }
     ];
 
     const unsubscribes = collections.map(col => {
@@ -3731,6 +3737,13 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                   calendarConfig={calendarConfig} 
                   user={user} 
                   staff={staff}
+                />
+              )}
+              {activeTab === 'tasks' && (
+                <TaskView 
+                  user={user} 
+                  staff={staff} 
+                  tasks={tasks} 
                 />
               )}
               {activeTab === 'admin' && (

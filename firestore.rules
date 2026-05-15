@@ -151,6 +151,12 @@ service cloud.firestore {
       allow write: if isAdmin() && isValidBrandSettings(incoming());
     }
 
+    // Tasks
+    match /tasks/{taskId} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.assignedTo.hasAny([request.auth.uid]));
+      allow write: if isManager() || (isSignedIn() && incoming().assignedTo.hasAny([request.auth.uid]));
+    }
+
     match /settings/calendar {
       allow read: if isSignedIn();
       allow write: if isAdmin();

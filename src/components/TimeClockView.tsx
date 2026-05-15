@@ -221,7 +221,11 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], currentUserEm
       ['Total Actual Worked', totalActualWorked.toFixed(2)],
       ['Attendance Target (Expected for days worked)', expectedForAttendedDaysLocal.toFixed(2)],
       ['Net Attendance Balance (Actual - Attendance Target)', netBalanceLocal.toFixed(2)],
-      ['Used Annual Leave (Days)', usedAnnualDays]
+      ['Used Annual Leave (Days)', usedAnnualDays],
+      ['Manual Comp Off Balance', baseCompOffBalance.toFixed(1)],
+      ['Dynamically Earned Comp Off', calculateDynamicallyEarnedCompOff().toFixed(1)],
+      ['Total Earned Comp Off Balance', earnedCompOffBalance.toFixed(1)],
+      ['Used Comp Off Days', usedCompOffDays.toFixed(1)]
     ];
 
     const csvContent = [
