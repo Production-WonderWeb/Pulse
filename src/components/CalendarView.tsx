@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths } from 'date-fns';
 import { ChevronLeft, ChevronRight, User as UserIcon, Users } from 'lucide-react';
-import { Project, LeaveRequest, ProjectResourceAssignment, CalendarConfig, User } from '../types';
+import { Project, LeaveRequest, ProjectResourceAssignment, CalendarConfig, User, Task } from '../types';
 import { cn } from '../lib/utils';
 
 interface Props {
@@ -11,9 +11,10 @@ interface Props {
   calendarConfig: CalendarConfig;
   user: User;
   staff: User[];
+  tasks: Task[];
 }
 
-export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignments, calendarConfig, user, staff }) => {
+export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignments, calendarConfig, user, staff, tasks }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [viewMode, setViewMode] = useState<'all' | 'mine'>(user.role === 'Staff' ? 'mine' : 'all');
 
@@ -27,7 +28,7 @@ export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignm
   const startOffset = monthStart.getDay(); // 0 for Sunday, 1 for Monday, etc.
 
   const getEventsForDay = (day: Date) => {
-    const events: { title: string; type: 'project' | 'leave' | 'assignment' | 'holiday' | 'weekend' }[] = [];
+    const events: { title: string; type: 'project' | 'leave' | 'assignment' | 'holiday' | 'weekend' | 'task' }[] = [];
     const dateStr = format(day, 'yyyy-MM-dd');
     const isForcedWorking = (calendarConfig.forcedWorkingDates || []).includes(dateStr);
 
@@ -75,6 +76,19 @@ export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignm
           title: viewMode === 'mine' ? 'My Leave' : `Leave: ${staffName}`, 
           type: 'leave' 
         });
+      }
+    });
+
+    // Filter tasks
+    const visibleTasks = viewMode === 'mine' 
+      ? (tasks || []).filter(t => t.assignedTo?.includes(user.id))
+      : (tasks || []);
+
+    visibleTasks.forEach(t => {
+      // Due date is ISO, extract YYYY-MM-DD
+      const taskDate = t.dueDate.split('T')[0];
+      if (taskDate === dateStr) {
+        events.push({ title: `Task: ${t.title}`, type: 'task' });
       }
     });
 
@@ -165,6 +179,7 @@ export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignm
                                 "text-[7px] font-black uppercase p-1.5 rounded-lg truncate leading-none flex items-center gap-1.5",
                                 e.type === 'project' ? 'bg-brand-blue/10 text-brand-blue border border-brand-blue/20' : 
                                 e.type === 'leave' ? 'bg-brand-green/10 text-brand-green border border-brand-green/20' :
+                                e.type === 'task' ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' :
                                 e.type === 'holiday' ? 'bg-brand-orange/10 text-brand-orange border border-brand-orange/20' :
                                 e.type === 'weekend' ? 'bg-[var(--bg-primary)] text-[var(--text-secondary)] opacity-40' : 
                                 'bg-brand-grey/10 text-brand-grey border border-brand-grey/20'
@@ -173,6 +188,7 @@ export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignm
                                   "w-1 h-1 rounded-full shrink-0",
                                   e.type === 'project' ? 'bg-brand-blue' : 
                                   e.type === 'leave' ? 'bg-brand-green' :
+                                  e.type === 'task' ? 'bg-brand-purple' :
                                   e.type === 'holiday' ? 'bg-brand-orange' : 'bg-[var(--text-secondary)]'
                                 )} />
                                 {e.title}

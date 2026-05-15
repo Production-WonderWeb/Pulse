@@ -134,6 +134,7 @@ export interface Project {
     mapLink?: string;
   };
   status: 'planning' | 'active' | 'completed' | 'on-hold';
+  description: string;
   startDate: string;
   endDate: string;
   eventDates: ProjectEventDate[];
@@ -189,15 +190,22 @@ export enum LeaveStatus {
   REJECTED = 'REJECTED'
 }
 
+export interface AttendanceSession {
+  checkIn: string;
+  checkOut?: string;
+  hoursWorked: number;
+}
+
 export interface AttendanceRecord {
   id: string;
   staffId: string;
   date: string;
-  checkIn: string;
+  checkIn: string; // Use first session's checkIn for legacy compatibility
   checkInRaw?: string;
-  checkOut?: string;
-  hoursWorked: number;
+  checkOut?: string; // Use last session's checkOut for legacy compatibility
+  hoursWorked: number; // Sum of sessions
   standardHours?: number;
+  sessions?: AttendanceSession[];
 }
 
 export interface PublicHoliday {

@@ -478,7 +478,7 @@ const Sidebar = ({ activeTab, setActiveTab, role, onLogout, settings, userEmail 
   );
 };
 
-const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, settings, notifications = [], onMarkNotificationRead }: { title: string, user: User, theme: 'light' | 'dark', toggleTheme: () => void, onLogout?: () => void, onUpdateUser?: (updated: User) => void, settings: SystemSettings | null, notifications?: AppNotification[], onMarkNotificationRead?: (id: string) => void }) => {
+const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, settings, notifications = [], onMarkNotificationRead, onNotificationClick }: { title: string, user: User, theme: 'light' | 'dark', toggleTheme: () => void, onLogout?: () => void, onUpdateUser?: (updated: User) => void, settings: SystemSettings | null, notifications?: AppNotification[], onMarkNotificationRead?: (id: string) => void, onNotificationClick?: (n: AppNotification) => void }) => {
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -555,7 +555,11 @@ const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, setti
                   {notifications.filter(n => n.userId === user.id).sort((a, b) => b.createdAt?.toMillis?.() !== undefined ? b.createdAt.toMillis() - a.createdAt?.toMillis?.() : 0).map(n => (
                     <div 
                       key={n.id} 
-                      onClick={() => { if (!n.read && onMarkNotificationRead) onMarkNotificationRead(n.id); }}
+                      onClick={() => { 
+                        if (!n.read && onMarkNotificationRead) onMarkNotificationRead(n.id);
+                        if (onNotificationClick) onNotificationClick(n);
+                        setShowNotifications(false);
+                      }}
                       className={`p-3 rounded-xl border transition-all cursor-pointer ${n.read ? 'bg-[var(--bg-primary)] border-[var(--border-color)]/50 opacity-60' : 'bg-[var(--bg-primary)] border-brand-orange/30 shadow-sm'}`}
                     >
                       <div className="flex gap-2 items-start">
@@ -1642,6 +1646,11 @@ const ProjectsView = ({
                         <p className="text-[9px] text-brand-blue font-black uppercase tracking-widest">
                           {client?.name} {contact ? `(${contact.name})` : ''}
                         </p>
+                        {project.description && (
+                          <p className="text-[10px] text-[var(--text-secondary)] mt-2 line-clamp-2 leading-relaxed">
+                            {project.description}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className={cn(
@@ -3368,6 +3377,12 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
     }
   };
 
+  const handleNotificationClick = (n: AppNotification) => {
+    if (n.type === 'project') setActiveTab('projects');
+    else if (n.type === 'leave') setActiveTab('timeclock');
+    else if (n.title.toLowerCase().includes('task')) setActiveTab('tasks');
+  };
+
   const currentTitle = () => {
     if (activeTab === 'dashboard') return settings?.appName || 'WONDERWEB PULSE';
     switch(activeTab) {
@@ -3414,6 +3429,7 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
               console.error(err);
             }
           }}
+          onNotificationClick={handleNotificationClick}
         />
         
         <main className="flex-1 overflow-y-auto overflow-x-hidden md:px-8 pb-32 md:pb-8">
@@ -3582,27 +3598,34 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                       const now = new Date();
                       const dateStr = now.toISOString().split('T')[0];
                       
-                      // Check if an override or existing record for today exists
                       const existing = attendance.find(a => a.staffId === sid && a.date === dateStr);
                       
-                      const recordData = {
+                      const session = {
                         checkIn: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                         checkInRaw: now.toISOString(),
                         hoursWorked: 0,
                       };
 
                       if (existing) {
-                        await updateDoc(doc(db, 'attendance', existing.id), recordData);
+                        const sessions = existing.sessions || [];
+                        await updateDoc(doc(db, 'attendance', existing.id), {
+                          sessions: [...sessions, session],
+                          checkIn: existing.checkIn || session.checkIn,
+                          checkInRaw: existing.checkInRaw || session.checkInRaw,
+                        });
                       } else {
                         await addDoc(collection(db, 'attendance'), {
-                          ...recordData,
                           staffId: sid,
                           date: dateStr,
+                          checkIn: session.checkIn,
+                          checkInRaw: session.checkInRaw,
+                          hoursWorked: 0,
+                          sessions: [session],
                           createdAt: serverTimestamp()
                         });
                       }
                       
-                      await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'in', lastCheckIn: recordData.checkIn });
+                      await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'in', lastCheckIn: session.checkIn });
                     } catch (err) {
                       handleFirestoreError(err, OperationType.WRITE, 'attendance');
                     }
@@ -3610,28 +3633,40 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                   onCheckOut={async (staffId) => {
                     try {
                       const sid = staffId || user.id;
-                      // Find the most recent record with no check-out for this user
-                      const record = [...attendance]
-                        .filter(a => a.staffId === sid && !a.checkOut && a.checkIn !== 'OVERRIDE')
-                        .sort((a, b) => b.date.localeCompare(a.date))[0];
+                      const now = new Date();
+                      const dateStr = now.toISOString().split('T')[0];
+                      
+                      const record = attendance.find(a => a.staffId === sid && a.date === dateStr);
 
-                      if (record) {
-                        const now = new Date();
-                        const checkOut = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                        const checkInDate = record.checkInRaw ? new Date(record.checkInRaw) : new Date(record.date + 'T09:00:00');
-                        const hoursWorked = Math.round(((now.getTime() - checkInDate.getTime()) / (1000 * 60 * 60)) * 10) / 10;
-
-                        const recordUpdate: any = { checkOut, hoursWorked };
-                        const profileUpdate: any = { checkInStatus: 'out' };
-
-                        const [y, m, d] = record.date.split('-').map(Number);
-                        const localDate = new Date(y, m - 1, d, 12, 0, 0);
-                        const dayOfWeek = localDate.getDay();
+                      if (record && record.sessions && record.sessions.length > 0) {
+                        const sessions = [...record.sessions];
+                        const lastSession = sessions[sessions.length - 1];
                         
-                        await updateDoc(doc(db, 'attendance', record.id), recordUpdate); 
-                        await updateDoc(doc(db, 'profiles', sid), profileUpdate);
+                        if (!lastSession.checkOut) {
+                          const checkOut = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                          const checkInTime = new Date(lastSession.checkInRaw || lastSession.checkIn);
+                          const sessionHours = Math.round(((now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60)) * 10) / 10;
+                          
+                          lastSession.checkOut = checkOut;
+                          lastSession.hoursWorked = sessionHours;
+                          
+                          const totalHours = sessions.reduce((sum, s) => sum + (s.hoursWorked || 0), 0);
+                          
+                          await updateDoc(doc(db, 'attendance', record.id), { 
+                            sessions, 
+                            hoursWorked: totalHours,
+                            checkOut // updating legacy field with latest checkout
+                          });
+                        }
+                        await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'out' });
+                      } else if (record) {
+                        // Fallback for legacy records without sessions
+                        const checkOut = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        const checkInTime = record.checkInRaw ? new Date(record.checkInRaw) : new Date(record.date + 'T09:00:00');
+                        const hoursWorked = Math.round(((now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60)) * 10) / 10;
+                        await updateDoc(doc(db, 'attendance', record.id), { checkOut, hoursWorked });
+                        await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'out' });
                       } else {
-                        // Fallback: if no active record found, just reset status
                         await updateDoc(doc(db, 'profiles', sid), { checkInStatus: 'out' });
                       }
                     } catch (err) {

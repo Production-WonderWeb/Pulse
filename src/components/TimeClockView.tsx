@@ -875,8 +875,17 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], currentUserEm
                   <div className="flex justify-between items-center relative">
                     <div className="space-y-1">
                       <p className="font-black text-[10px] uppercase tracking-widest text-[var(--text-secondary)]">{a.date}</p>
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs font-black text-[var(--text-primary)] uppercase">{a.checkIn} — {a.checkOut || 'Active'}</p>
+                      <div className="flex flex-col gap-1">
+                        {a.sessions && a.sessions.length > 0 ? (
+                          a.sessions.map((s, idx) => (
+                            <div key={idx} className="flex items-baseline gap-2">
+                              <span className="text-[10px] font-black text-[var(--text-primary)]">{s.checkIn} — {s.checkOut || 'Active'}</span>
+                              {s.hoursWorked > 0 && <span className="text-[8px] text-brand-blue font-bold">({s.hoursWorked}h)</span>}
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-xs font-black text-[var(--text-primary)] uppercase">{a.checkIn} — {a.checkOut || 'Active'}</p>
+                        )}
                       </div>
                     </div>
                     <div className="text-right">
