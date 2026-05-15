@@ -141,12 +141,52 @@ export const TaskView: React.FC<TaskViewProps> = ({ user, staff, tasks }) => {
   const renderTask = (task: Task) => (
     <div key={task.id} className="p-4 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] transition-all">
         {editingTask?.id === task.id ? (
-            <div className="space-y-2">
-                 <input className="w-full bg-[var(--bg-primary)] p-2 rounded-lg" value={editingTask.title} onChange={e => setEditingTask({...editingTask, title: e.target.value})} />
-                 <textarea className="w-full bg-[var(--bg-primary)] p-2 rounded-lg" value={editingTask.description} onChange={e => setEditingTask({...editingTask, description: e.target.value})} />
-                 <input className="w-full bg-[var(--bg-primary)] p-2 rounded-lg" type="datetime-local" value={editingTask.dueDate} onChange={e => setEditingTask({...editingTask, dueDate: e.target.value})} />
-                <button onClick={handleUpdateTask} className="bg-green-500 text-white p-2 rounded-lg"><Save size={16}/></button>
-                <button onClick={() => setEditingTask(null)} className="bg-red-500 text-white p-2 rounded-lg"><X size={16}/></button>
+            <div className="space-y-4 p-4 bg-[var(--bg-primary)] rounded-xl border border-brand-blue/30 shadow-lg">
+                 <div className="space-y-1">
+                   <label className="text-[10px] font-black uppercase text-[var(--text-secondary)] ml-1">Task Title</label>
+                   <input className="w-full bg-[var(--bg-secondary)] p-2 rounded-lg text-sm border border-[var(--border-color)] outline-none focus:border-brand-blue" value={editingTask.title} onChange={e => setEditingTask({...editingTask, title: e.target.value})} />
+                 </div>
+                 
+                 <div className="space-y-1">
+                   <label className="text-[10px] font-black uppercase text-[var(--text-secondary)] ml-1">Description</label>
+                   <textarea className="w-full bg-[var(--bg-secondary)] p-2 rounded-lg text-sm border border-[var(--border-color)] outline-none focus:border-brand-blue h-24 resize-none" value={editingTask.description} onChange={e => setEditingTask({...editingTask, description: e.target.value})} />
+                 </div>
+
+                 <div className="space-y-1">
+                   <label className="text-[10px] font-black uppercase text-[var(--text-secondary)] ml-1">Due Date & Time</label>
+                   <input className="w-full bg-[var(--bg-secondary)] p-2 rounded-lg text-sm border border-[var(--border-color)] outline-none focus:border-brand-blue" type="datetime-local" value={editingTask.dueDate} onChange={e => setEditingTask({...editingTask, dueDate: e.target.value})} />
+                 </div>
+
+                 {isAdmin && (
+                   <div className="space-y-2">
+                     <label className="text-[10px] font-black uppercase text-[var(--text-secondary)] ml-1">Assignees</label>
+                     <div className="flex flex-wrap gap-1.5 p-2 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)]">
+                       {staff.map(s => (
+                         <button 
+                           key={s.id} 
+                           onClick={(e) => { e.stopPropagation(); toggleAssignee(s.id, true); }}
+                           className={`px-2 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border ${
+                             editingTask.assignedTo?.includes(s.id) 
+                               ? 'bg-brand-blue text-white border-brand-blue shadow-sm' 
+                               : 'bg-[var(--bg-primary)] text-[var(--text-secondary)] border-[var(--border-color)] hover:border-brand-blue/50'
+                           }`}
+                         >
+                           {s.name}
+                         </button>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+
+                <div className="flex gap-2 pt-2">
+                  <button onClick={handleUpdateTask} title="Save Changes" className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white p-2.5 rounded-xl transition-all shadow-md active:scale-95">
+                    <Save size={16}/>
+                    <span className="text-[10px] font-black uppercase tracking-wider">Save Changes</span>
+                  </button>
+                  <button onClick={() => setEditingTask(null)} title="Cancel" className="bg-[var(--bg-secondary)] hover:bg-[var(--border-color)] text-[var(--text-primary)] p-2.5 rounded-xl transition-all border border-[var(--border-color)] active:scale-95">
+                    <X size={16}/>
+                  </button>
+                </div>
             </div>
         ) : (
             <>
