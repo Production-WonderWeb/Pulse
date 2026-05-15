@@ -138,6 +138,37 @@
         },
         "forcedWorkingDates": { "type": "array", "items": { "type": "string" } }
       }
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A standalone task.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "assignedTo": { "type": "array", "items": { "type": "string" } },
+        "createdBy": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["todo", "in-progress", "completed"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "assignedTo", "createdBy", "dueDate", "status"]
+    },
+    "TaskComment": {
+      "title": "Task Comment",
+      "description": "A comment on a task.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "taskId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "taskId", "userId", "userName", "text", "createdAt"]
     }
   },
   "firestore": {
@@ -148,6 +179,8 @@
     "vendors/{vendorId}": { "schema": "Vendor", "description": "Vendors" },
     "assignments/{assignmentId}": { "schema": "Assignment", "description": "Resource assignments" },
     "settings/global": { "schema": "SystemSettings", "description": "Global branding settings" },
-    "settings/calendar": { "schema": "CalendarConfig", "description": "Calendar configuration" }
+    "settings/calendar": { "schema": "CalendarConfig", "description": "Calendar configuration" },
+    "tasks/{taskId}": { "schema": "Task", "description": "Standalone tasks" },
+    "tasks/{taskId}/comments/{commentId}": { "schema": "TaskComment", "description": "Comments on a task" }
   }
 }

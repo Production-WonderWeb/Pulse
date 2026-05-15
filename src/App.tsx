@@ -1830,6 +1830,15 @@ const ProjectsView = ({
                <h4 className="text-[10px] font-black uppercase tracking-[0.2em]">Project Identity</h4>
              </div>
              <div className="space-y-4 p-4 bg-[var(--bg-primary)] rounded-3xl border border-[var(--border-color)]">
+               <div>
+                  <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Project Description</label>
+                  <textarea 
+                    value={formData.description || ''}
+                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                    className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-blue resize-none h-16"
+                    placeholder="Brief description..."
+                  />
+                </div>
                <div className="grid grid-cols-2 gap-4">
                  <div>
                    <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Reference No.</label>

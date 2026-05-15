@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { Task, User } from '../types';
-import { Plus, Check, Trash2, Edit3, X, Save, Clock } from 'lucide-react';
-import { collection, addDoc, updateDoc, doc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { Task, User, TaskComment } from '../types';
+import { Plus, Check, Trash2, Edit3, X, Save, Clock, MessageSquare, Send } from 'lucide-react';
+import { collection, addDoc, updateDoc, doc, deleteDoc, serverTimestamp, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 interface TaskViewProps {
@@ -10,14 +10,75 @@ interface TaskViewProps {
   tasks: Task[];
 }
 
+const TaskComments: React.FC<{ taskId: string; user: User }> = ({ taskId, user }) => {
+  const [comments, setComments] = useState<TaskComment[]>([]);
+  const [newComment, setNewComment] = useState('');
+
+  useEffect(() => {
+    const q = query(collection(db, 'tasks', taskId, 'comments'), orderBy('createdAt', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TaskComment)));
+    });
+    return () => unsubscribe();
+  }, [taskId]);
+
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComment.trim()) return;
+
+    await addDoc(collection(db, 'tasks', taskId, 'comments'), {
+      taskId,
+      userId: user.id,
+      userName: user.name,
+      text: newComment.trim(),
+      createdAt: serverTimestamp()
+    });
+    setNewComment('');
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-[var(--border-color)]">
+      <h4 className="text-[10px] font-black uppercase tracking-widest text-[var(--text-secondary)] mb-2 flex items-center gap-2">
+        <MessageSquare size={12} /> Comments
+      </h4>
+      <div className="space-y-3 mb-4 max-h-40 overflow-y-auto scrollbar-hide">
+        {comments.map(c => (
+          <div key={c.id} className="text-[10px]">
+            <div className="flex justify-between mb-1">
+              <span className="font-bold text-brand-blue">{c.userName}</span>
+              <span className="text-[var(--text-secondary)] opacity-60">
+                {c.createdAt?.toDate ? c.createdAt.toDate().toLocaleString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+              </span>
+            </div>
+            <p className="bg-[var(--bg-primary)] p-2 rounded-lg leading-relaxed">{c.text}</p>
+          </div>
+        ))}
+        {comments.length === 0 && <p className="text-[10px] text-[var(--text-secondary)] italic">No comments yet</p>}
+      </div>
+      <form onSubmit={handleAddComment} className="flex gap-2">
+        <input 
+          className="flex-1 bg-[var(--bg-primary)] p-2 rounded-lg text-xs outline-none focus:ring-1 focus:ring-brand-blue" 
+          placeholder="Add a comment..."
+          value={newComment}
+          onChange={e => setNewComment(e.target.value)}
+        />
+        <button type="submit" className="bg-brand-blue text-white p-2 rounded-lg hover:opacity-80 transition-opacity">
+          <Send size={14}/>
+        </button>
+      </form>
+    </div>
+  );
+};
+
 export const TaskView: React.FC<TaskViewProps> = ({ user, staff, tasks }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [newTask, setNewTask] = useState<Partial<Task>>({ status: 'todo', assignedTo: [] });
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [expandedTask, setExpandedTask] = useState<string | null>(null);
 
-  const isAdmin = ['Administrator', 'Admin'].includes(user.role);
+  const isAdmin = ['administrator', 'admin'].includes(user.role?.toLowerCase() || '');
 
-  const filteredTasks = isAdmin ? tasks : tasks.filter(t => t.assignedTo?.includes(user.id));
+  const filteredTasks = isAdmin ? tasks : (tasks || []).filter(t => t.assignedTo?.includes(user.id));
   const pendingTasks = filteredTasks.filter(t => t.status !== 'completed');
   const completedTasks = filteredTasks.filter(t => t.status === 'completed');
 
@@ -78,30 +139,40 @@ export const TaskView: React.FC<TaskViewProps> = ({ user, staff, tasks }) => {
   };
 
   const renderTask = (task: Task) => (
-    <div key={task.id} className="p-4 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)]">
+    <div key={task.id} className="p-4 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] transition-all">
         {editingTask?.id === task.id ? (
             <div className="space-y-2">
                  <input className="w-full bg-[var(--bg-primary)] p-2 rounded-lg" value={editingTask.title} onChange={e => setEditingTask({...editingTask, title: e.target.value})} />
+                 <textarea className="w-full bg-[var(--bg-primary)] p-2 rounded-lg" value={editingTask.description} onChange={e => setEditingTask({...editingTask, description: e.target.value})} />
                  <input className="w-full bg-[var(--bg-primary)] p-2 rounded-lg" type="datetime-local" value={editingTask.dueDate} onChange={e => setEditingTask({...editingTask, dueDate: e.target.value})} />
                 <button onClick={handleUpdateTask} className="bg-green-500 text-white p-2 rounded-lg"><Save size={16}/></button>
                 <button onClick={() => setEditingTask(null)} className="bg-red-500 text-white p-2 rounded-lg"><X size={16}/></button>
             </div>
         ) : (
             <>
-                <h3 className="font-bold text-lg">{task.title}</h3>
-                <p className="text-sm text-[var(--text-secondary)] mb-2">{task.description}</p>
-                <p className="text-xs">Assigned to: {task.assignedTo?.map(id => staff.find(s => s.id === id)?.name).join(', ') || 'Unknown'}</p>
-                <p className="text-xs">Due: {new Date(task.dueDate).toLocaleString()}</p>
+                <div onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)} className="cursor-pointer">
+                    <h3 className="font-bold text-lg">{task.title}</h3>
+                    <p className="text-sm text-[var(--text-secondary)] mb-2 line-clamp-2">{task.description}</p>
+                    <p className="text-xs">Assigned to: {task.assignedTo?.map(id => staff.find(s => s.id === id)?.name).join(', ') || 'Unknown'}</p>
+                    <p className="text-xs">Due: {new Date(task.dueDate).toLocaleString()}</p>
+                </div>
                 <div className="flex gap-2 mt-4">
                     <button
-                    onClick={() => handleStatusChange(task, task.status === 'completed' ? 'todo' : 'completed')}
-                    className={`${task.status === 'completed' ? 'bg-gray-400' : 'bg-green-500'} text-white p-1 rounded transition-colors`}
+                        onClick={() => handleStatusChange(task, task.status === 'completed' ? 'todo' : 'completed')}
+                        className={`${task.status === 'completed' ? 'bg-gray-400' : 'bg-green-500'} text-white p-1 rounded transition-colors`}
                     >
                     {task.status === 'completed' ? <X size={16} /> : <Check size={16} />}
                     </button>
                     <button onClick={() => setEditingTask(task)} className="bg-brand-blue text-white p-1 rounded"><Edit3 size={16}/></button>
+                    <button 
+                      onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
+                      className={`p-1 rounded transition-colors ${expandedTask === task.id ? 'bg-brand-blue text-white' : 'bg-[var(--bg-primary)] border border-[var(--border-color)]'}`}
+                    >
+                        <MessageSquare size={16} />
+                    </button>
                     {isAdmin && <button onClick={() => deleteDoc(doc(db, 'tasks', task.id))} className="bg-red-500 text-white p-1 rounded"><Trash2 size={16}/></button>}
                 </div>
+                {expandedTask === task.id && <TaskComments taskId={task.id} user={user} />}
             </>
         )}
     </div>

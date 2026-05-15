@@ -166,6 +166,15 @@ export interface Task {
   updatedAt?: any;
 }
 
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  userId: string;
+  userName: string;
+  text: string;
+  createdAt: any;
+}
+
 export interface LeaveRequest {
   id: string;
   staffId: string;

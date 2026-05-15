@@ -153,8 +153,19 @@ service cloud.firestore {
 
     // Tasks
     match /tasks/{taskId} {
-      allow read: if isSignedIn() && (isAdmin() || resource.data.assignedTo.hasAny([request.auth.uid]));
+      allow read: if isSignedIn();
       allow write: if isManager() || (isSignedIn() && incoming().assignedTo.hasAny([request.auth.uid]));
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        function isValidComment(data) {
+          return data.userId == request.auth.uid &&
+                 data.text is string && data.text.size() <= 1000;
+        }
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && isValidComment(incoming());
+        allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+      }
     }
 
     match /settings/calendar {
