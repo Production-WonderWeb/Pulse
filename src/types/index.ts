@@ -159,9 +159,10 @@ export interface Task {
   description: string;
   assignedTo: string[];
   createdBy: string;
-  dueDate: string;
+  dueDate: string; // ISO string with date and time
   status: 'todo' | 'in-progress' | 'completed';
   createdAt?: any;
+  updatedAt?: any;
 }
 
 export interface LeaveRequest {
