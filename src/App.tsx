@@ -50,7 +50,8 @@ import {
   Truck,
   AlertCircle,
   MessageSquare,
-  CheckSquare
+  CheckSquare,
+  Menu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -365,59 +366,10 @@ const generateProjectPDF = async (project: Project, client?: Client, assignments
 
 // --- Sub-components ---
 
-const BottomNav = ({ activeTab, setActiveTab, role, settings, userEmail }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole, settings: SystemSettings | null, userEmail?: string }) => {
-  const roleLower = (role || 'staff').toLowerCase();
-  const isAdmin = roleLower.includes('admin') || userEmail?.toLowerCase().trim() === 'production@wonderweb.ae';
-  const isManager = roleLower.includes('manager') || isAdmin;
-  
-  const tabs = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Dash', roles: ['administrator', 'admin', 'manager'] },
-    { id: 'inventory', icon: Warehouse, label: 'Equipment', roles: ['administrator', 'admin', 'manager', 'staff'] },
-    { id: 'resources', icon: Users, label: 'CRM', roles: ['administrator', 'admin', 'manager'] },
-    { id: 'projects', icon: Briefcase, label: 'Jobs', roles: ['administrator', 'admin', 'manager', 'staff'] },
-    { id: 'timeclock', icon: Clock, label: 'Time', roles: ['administrator', 'admin', 'manager', 'staff'] },
-    { id: 'calendar', icon: Calendar, label: 'Cal', roles: ['administrator', 'admin', 'manager', 'staff'] },
-    { id: 'admin', icon: Settings, label: 'Adm', roles: ['administrator', 'admin'] },
-  ].filter(t => {
-    if (isAdmin) return true;
-    if (isManager && t.roles.includes('manager')) return true;
-    return t.roles.includes(roleLower);
-  });
 
-  return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 glass-morphism border-t border-[var(--border-color)] px-2 pb-safe pt-2 z-50 rounded-t-3xl shadow-2xl">
-      <div className="flex justify-around items-center max-w-lg mx-auto">
-        <div className="flex items-center justify-center p-2">
-          <PulseLogo className="w-8 h-8" logoUrl={settings?.logoUrl} />
-        </div>
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            id={`nav-tab-${tab.id}`}
-            className={cn(
-              "flex flex-col items-center gap-1 p-2 transition-all relative",
-              activeTab === tab.id ? "text-brand-blue scale-110" : "text-[var(--text-secondary)]"
-            )}
-          >
-            <tab.icon size={20} />
-            <span className="text-[8px] font-black uppercase tracking-widest">{tab.label}</span>
-            {activeTab === tab.id && (
-              <motion.div 
-                layoutId="nav-pill"
-                className="absolute -bottom-1 w-6 h-1 bg-brand-blue rounded-full shadow-lg shadow-brand-blue/40"
-              />
-            )}
-          </button>
-        ))}
-      </div>
-    </nav>
-  );
-};
-
-const Sidebar = ({ activeTab, setActiveTab, role, onLogout, settings, userEmail }: { activeTab: string, setActiveTab: (t: string) => void, role: UserRole, onLogout: () => void, settings: SystemSettings | null, userEmail?: string }) => {
-  const roleLower = (role || 'staff').toLowerCase();
-  const isAdmin = roleLower.includes('admin') || userEmail?.toLowerCase().trim() === 'production@wonderweb.ae';
+const Sidebar = ({ activeTab, setActiveTab, user, onLogout, settings, isOpen, onClose }: { activeTab: string, setActiveTab: (t: string) => void, user: User, onLogout: () => void, settings: SystemSettings | null, isOpen: boolean, onClose: () => void }) => {
+  const roleLower = (user.role || 'staff').toLowerCase();
+  const isAdmin = roleLower.includes('admin') || user.email?.toLowerCase().trim() === 'production@wonderweb.ae';
   const isManager = roleLower.includes('manager') || isAdmin;
 
   const tabs = [
@@ -436,50 +388,100 @@ const Sidebar = ({ activeTab, setActiveTab, role, onLogout, settings, userEmail 
   });
 
   return (
-    <aside className="hidden md:flex flex-col w-64 bg-[var(--bg-secondary)] border-r border-[var(--border-color)] h-screen sticky top-0 z-50">
-      <div className="p-6 flex items-center gap-3">
-        <PulseLogo className="w-10 h-10 object-contain" logoUrl={settings?.logoUrl} />
-        <h1 className="text-xl font-black tracking-tighter text-[var(--text-primary)]">
-          {settings?.appName || 'WONDERWEB PULSE'}
-        </h1>
-      </div>
+    <>
+      {/* Overlay for mobile */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] md:hidden"
+          />
+        )}
+      </AnimatePresence>
 
-      <nav className="flex-1 px-4 py-4 space-y-1">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group",
-              activeTab === tab.id 
-                ? "bg-brand-blue text-white shadow-md shadow-brand-blue/10" 
-                : "text-[var(--text-secondary)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]"
-            )}
-          >
-            <tab.icon size={20} className={cn(
-              "transition-transform duration-200",
-              activeTab === tab.id ? "scale-110" : "group-hover:scale-110"
-            )} />
-            <span className="text-sm font-bold">{tab.label}</span>
+      <aside className={cn(
+        "fixed md:sticky top-0 left-0 z-[70] h-screen bg-[var(--bg-secondary)] border-r border-[var(--border-color)] transition-all duration-300 ease-in-out flex flex-col shrink-0",
+        "w-72 md:w-64",
+        isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      )}>
+        <div className="p-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <PulseLogo className="w-10 h-10 object-contain" logoUrl={settings?.logoUrl} />
+            <h1 className="text-xl font-black tracking-tighter text-[var(--text-primary)]">
+              {settings?.appName || 'WONDERWEB PULSE'}
+            </h1>
+          </div>
+          <button onClick={onClose} className="md:hidden p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+            <X size={24} />
           </button>
-        ))}
-      </nav>
+        </div>
 
-      <div className="p-4 border-t border-[var(--border-color)] mt-auto">
-        <button 
-          onClick={onLogout}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-500/10 transition-colors font-bold text-sm"
-        >
-          <LogOut size={20} />
-          <span>Sign Out</span>
-        </button>
-      </div>
-    </aside>
+        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto scrollbar-hide">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveTab(tab.id);
+                if (window.innerWidth < 768) onClose();
+              }}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative",
+                activeTab === tab.id 
+                  ? "bg-brand-blue text-white shadow-lg shadow-brand-blue/20" 
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]"
+              )}
+            >
+              <tab.icon size={20} className={cn(
+                "transition-transform duration-200",
+                activeTab === tab.id ? "scale-110" : "group-hover:scale-110"
+              )} />
+              <span className="text-sm font-bold">{tab.label}</span>
+              {activeTab === tab.id && (
+                <motion.div 
+                  layoutId="active-tab-indicator"
+                  className="absolute left-0 w-1 h-6 bg-white rounded-r-full"
+                />
+              )}
+            </button>
+          ))}
+        </nav>
+
+        <div className="p-4 border-t border-[var(--border-color)] mt-auto bg-[var(--bg-secondary)]">
+          <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-xl bg-[var(--bg-primary)] border border-[var(--border-color)]">
+            <div className="w-10 h-10 rounded-xl bg-brand-blue/10 flex items-center justify-center text-brand-blue border border-[var(--border-color)] overflow-hidden shrink-0">
+              {user.imageUrl ? (
+                <img 
+                  src={user.imageUrl} 
+                  alt={user.name} 
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <UserIcon size={20} />
+              )}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-[10px] font-black text-[var(--text-primary)] uppercase truncate tracking-tight">{user.name || user.email}</span>
+              <span className="text-[8px] text-brand-green font-black uppercase tracking-widest leading-none mt-0.5">{user.role}</span>
+            </div>
+          </div>
+          <button 
+            onClick={onLogout}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-500/10 transition-colors font-black text-xs uppercase tracking-widest"
+          >
+            <LogOut size={20} />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+    </>
   );
 };
 
-const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, settings, notifications = [], onMarkNotificationRead, onNotificationClick }: { title: string, user: User, theme: 'light' | 'dark', toggleTheme: () => void, onLogout?: () => void, onUpdateUser?: (updated: User) => void, settings: SystemSettings | null, notifications?: AppNotification[], onMarkNotificationRead?: (id: string) => void, onNotificationClick?: (n: AppNotification) => void }) => {
-  const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
+const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, settings, notifications = [], onMarkNotificationRead, onNotificationClick, onMenuClick }: { title: string, user: User, theme: 'light' | 'dark', toggleTheme: () => void, onLogout?: () => void, onUpdateUser?: (updated: User) => void, settings: SystemSettings | null, notifications?: AppNotification[], onMarkNotificationRead?: (id: string) => void, onNotificationClick?: (n: AppNotification) => void, onMenuClick: () => void }) => {
   const [showNotifications, setShowNotifications] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.read && n.userId === user.id).length;
@@ -487,43 +489,18 @@ const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, setti
   return (
     <header className="sticky top-0 z-40 bg-[var(--bg-primary)]/80 backdrop-blur-xl px-4 md:px-8 py-4 flex justify-between items-center border-b border-[var(--border-color)]">
       <div className="flex items-center gap-4">
-        <div className="md:hidden">
+        <button onClick={onMenuClick} className="p-2 -ml-2 text-[var(--text-secondary)] hover:text-brand-blue bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] shadow-sm md:hidden">
+          <Menu size={20} />
+        </button>
+        <div className="hidden md:block">
            <PulseLogo className="w-8 h-8" logoUrl={settings?.logoUrl} />
         </div>
         <div>
           <h1 className="text-lg md:text-xl font-black text-[var(--text-primary)] uppercase tracking-tight leading-none">{title}</h1>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-[10px] bg-brand-green/10 text-brand-green px-1.5 py-0.5 rounded font-black uppercase tracking-widest">{user.role}</span>
-            <span className="w-1 h-1 rounded-full bg-[var(--border-color)]"></span>
-            <span className="text-[10px] text-[var(--text-secondary)] font-bold uppercase tracking-widest">Active System</span>
-          </div>
         </div>
       </div>
       
       <div className="flex items-center gap-3">
-        <div className="hidden md:flex flex-col items-end mr-2">
-          <span className="text-xs font-black text-[var(--text-primary)] uppercase tracking-tight">{user.name}</span>
-          <span className="text-[9px] text-[var(--text-secondary)] font-bold uppercase tracking-widest">{user.email}</span>
-        </div>
-
-        <div 
-          onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
-          className="w-10 h-10 rounded-xl bg-[var(--bg-secondary)] flex items-center justify-center border border-[var(--border-color)] shadow-sm cursor-pointer overflow-hidden relative group"
-        >
-          {user.imageUrl ? (
-            <img 
-              src={user.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=2563eb&color=fff`} 
-              alt={user.name} 
-              className="w-full h-full object-cover transition-transform group-hover:scale-110" 
-              referrerPolicy="no-referrer" 
-            />
-          ) : (
-            <div className="w-full h-full bg-brand-orange/10 flex items-center justify-center text-brand-orange">
-              <UserIcon size={20} />
-            </div>
-          )}
-        </div>
-
         <div className="flex items-center gap-1.5 bg-[var(--bg-secondary)] p-1.5 rounded-xl border border-[var(--border-color)]">
           <button 
             onClick={toggleTheme}
@@ -534,7 +511,7 @@ const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, setti
           </button>
           <div className="relative">
             <button 
-              onClick={() => { setShowNotifications(!showNotifications); setShowRoleSwitcher(false); }}
+              onClick={() => { setShowNotifications(!showNotifications); }}
               className={`p-1.5 rounded-lg transition-all relative ${showNotifications ? 'bg-brand-orange/10 text-brand-orange' : 'text-[var(--text-secondary)] hover:text-brand-orange hover:bg-[var(--bg-primary)]'}`}
               title="Notifications"
             >
@@ -583,30 +560,6 @@ const Header = ({ title, user, theme, toggleTheme, onLogout, onUpdateUser, setti
         </div>
       </div>
 
-      {showRoleSwitcher && (
-        <div className="absolute top-16 right-4 md:right-8 bg-[var(--bg-secondary)] shadow-2xl border border-[var(--border-color)] rounded-2xl p-2 z-50 w-64 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="p-3 border-b border-[var(--border-color)]">
-             <ImageUpload 
-               label="Profile Avatar"
-               value={user.imageUrl || ''}
-               onChange={(val) => {
-                  if (onUpdateUser) {
-                    onUpdateUser({ ...user, imageUrl: val });
-                  }
-               }}
-               maxSizeInKB={5120}
-             />
-          </div>
-          <div className="pt-2 border-t border-[var(--border-color)] md:hidden">
-            <button 
-              onClick={onLogout}
-              className="w-full text-left px-4 py-3 text-red-500 font-bold text-xs uppercase tracking-widest"
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
-      )}
     </header>
   );
 };
@@ -886,7 +839,7 @@ const ResourcesView = ({
   };
 
   return (
-    <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
+    <div className="p-4 space-y-6 pb-8 h-full overflow-y-auto">
       <div className="flex flex-col gap-4">
         <div className="flex gap-2 p-1 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] sticky top-0 z-10 shadow-sm overflow-x-auto no-scrollbar">
           {(['staff', 'clients', 'vendors', 'freelancers'] as const).map(tab => (
@@ -909,7 +862,7 @@ const ResourcesView = ({
             <input 
               type="text" 
               placeholder={`SEARCH ${activeSubTab.toUpperCase()}...`}
-              value={search}
+              value={search || ''}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors text-[var(--text-primary)]"
             />
@@ -925,7 +878,7 @@ const ResourcesView = ({
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <AnimatePresence mode="popLayout">
           {filteredItems.map(item => (
             <motion.div
@@ -951,7 +904,7 @@ const ResourcesView = ({
             <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Company/Full Name</label>
             <input 
               required
-              value={activeSubTab === 'clients' ? clientForm.name : activeSubTab === 'vendors' ? vendorForm.name : activeSubTab === 'staff' ? staffForm.name : freelancerForm.name}
+              value={(activeSubTab === 'clients' ? clientForm.name : activeSubTab === 'vendors' ? vendorForm.name : activeSubTab === 'staff' ? staffForm.name : freelancerForm.name) || ''}
               onChange={(e) => {
                 if (activeSubTab === 'clients') setClientForm({...clientForm, name: e.target.value});
                 if (activeSubTab === 'vendors') setVendorForm({...vendorForm, name: e.target.value});
@@ -970,7 +923,7 @@ const ResourcesView = ({
                   <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Phone Number</label>
                   <input 
                     required
-                    value={staffForm.phone}
+                    value={staffForm.phone || ''}
                     onChange={(e) => setStaffForm({...staffForm, phone: e.target.value})}
                     placeholder="+971 -- --- ----"
                     className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
@@ -979,7 +932,7 @@ const ResourcesView = ({
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">WhatsApp</label>
                   <input 
-                    value={staffForm.whatsapp}
+                    value={staffForm.whatsapp || ''}
                     onChange={(e) => setStaffForm({...staffForm, whatsapp: e.target.value})}
                     placeholder="+971 -- --- ----"
                     className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
@@ -991,7 +944,7 @@ const ResourcesView = ({
                 <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Residential Address</label>
                 <textarea 
                   required
-                  value={staffForm.address}
+                  value={staffForm.address || ''}
                   onChange={(e) => setStaffForm({...staffForm, address: e.target.value})}
                   placeholder="Full Address"
                   rows={2}
@@ -1006,7 +959,7 @@ const ResourcesView = ({
                     <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Contact Name</label>
                     <input 
                       required
-                      value={staffForm.emergencyContactName}
+                      value={staffForm.emergencyContactName || ''}
                       onChange={(e) => setStaffForm({...staffForm, emergencyContactName: e.target.value})}
                       placeholder="Jane Doe"
                       className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
@@ -1016,7 +969,7 @@ const ResourcesView = ({
                     <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Relationship</label>
                     <input 
                       required
-                      value={staffForm.emergencyContactRelation}
+                      value={staffForm.emergencyContactRelation || ''}
                       onChange={(e) => setStaffForm({...staffForm, emergencyContactRelation: e.target.value})}
                       placeholder="Spouse, etc."
                       className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
@@ -1027,7 +980,7 @@ const ResourcesView = ({
                   <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Emergency Phone</label>
                   <input 
                     required
-                    value={staffForm.emergencyContact}
+                    value={staffForm.emergencyContact || ''}
                     onChange={(e) => setStaffForm({...staffForm, emergencyContact: e.target.value})}
                     placeholder="+971 -- --- ----"
                     className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
@@ -1193,7 +1146,7 @@ const ResourcesView = ({
                   <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Role</label>
                   <input 
                     required
-                    value={freelancerForm.role}
+                    value={freelancerForm.role || ''}
                     onChange={(e) => setFreelancerForm({...freelancerForm, role: e.target.value})}
                     className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
                     placeholder="Stage Tech"
@@ -1204,7 +1157,7 @@ const ResourcesView = ({
                   <input 
                     required
                     type="number"
-                    value={freelancerForm.dailyRate}
+                    value={freelancerForm.dailyRate || 0}
                     onChange={(e) => setFreelancerForm({...freelancerForm, dailyRate: Number(e.target.value)})}
                     className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue font-mono"
                     placeholder="0.00"
@@ -1214,11 +1167,11 @@ const ResourcesView = ({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Email</label>
-                  <input required type="email" value={freelancerForm.email} onChange={(e) => setFreelancerForm({...freelancerForm, email: e.target.value})} className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs" />
+                  <input required type="email" value={freelancerForm.email || ''} onChange={(e) => setFreelancerForm({...freelancerForm, email: e.target.value})} className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Phone</label>
-                  <input required type="tel" value={freelancerForm.phone} onChange={(e) => setFreelancerForm({...freelancerForm, phone: e.target.value})} className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs" />
+                  <input required type="tel" value={freelancerForm.phone || ''} onChange={(e) => setFreelancerForm({...freelancerForm, phone: e.target.value})} className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs" />
                 </div>
               </div>
              </>
@@ -1226,9 +1179,9 @@ const ResourcesView = ({
 
           <button 
             type="submit"
-            className="w-full bg-brand-blue text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-brand-blue/20 hover:scale-[1.02] transition-all mt-4"
+            className="w-full bg-brand-blue text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-brand-blue/20 hover:scale-[1.05] active:scale-95 transition-all mt-8"
           >
-            {editingItem ? 'Execute Update' : 'Initialize Record'}
+            {editingItem ? 'Save & Execute Update' : 'Initialize Record'}
           </button>
         </form>
       </Modal>
@@ -1495,7 +1448,7 @@ const ProjectsView = ({
   const canEdit = roleLower.includes('admin') || roleLower === 'manager' || userEmail?.toLowerCase().trim() === 'production@wonderweb.ae';
 
   return (
-    <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
+    <div className="p-4 space-y-6 pb-8 h-full overflow-y-auto">
       <div className="flex flex-col gap-4">
         <div className="flex gap-3">
           <div className="relative flex-1">
@@ -1890,7 +1843,7 @@ const ProjectsView = ({
                   <div>
                     <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Status</label>
                     <select 
-                      value={formData.status}
+                      value={formData.status || 'planning'}
                       onChange={(e) => setFormData({...formData, status: e.target.value as any})}
                       className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none"
                     >
@@ -1905,7 +1858,7 @@ const ProjectsView = ({
                     <input 
                       required
                       list="project-category-options"
-                      value={formData.category}
+                      value={formData.category || ''}
                       onChange={(e) => setFormData({...formData, category: e.target.value})}
                       className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none focus:border-brand-blue"
                       placeholder="e.g. Civil"
@@ -1929,7 +1882,7 @@ const ProjectsView = ({
                     <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Site Address</label>
                     <input 
                       required
-                      value={formData.location.address}
+                      value={formData.location.address || ''}
                       onChange={(e) => setFormData({...formData, location: { ...formData.location, address: e.target.value }})}
                       className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none"
                       placeholder="Full Address"
@@ -1938,7 +1891,7 @@ const ProjectsView = ({
                   <div>
                     <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Map Link</label>
                     <input 
-                      value={formData.location.mapLink}
+                      value={formData.location.mapLink || ''}
                       onChange={(e) => setFormData({...formData, location: { ...formData.location, mapLink: e.target.value }})}
                       className="w-full bg-transparent border-b border-[var(--border-color)] py-2 text-xs outline-none"
                       placeholder="Google Maps URL"
@@ -2171,7 +2124,7 @@ const CalendarOldView = () => {
   const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
   
   return (
-    <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
+    <div className="p-4 space-y-6 pb-8 h-full overflow-y-auto">
       <div className="bg-[var(--bg-secondary)] rounded-3xl p-6 border border-[var(--border-color)] shadow-2xl">
         <div className="flex justify-between items-center mb-8">
           <h2 className="text-lg font-black text-[var(--text-primary)] uppercase tracking-tighter">May 2026</h2>
@@ -2256,7 +2209,7 @@ const DashboardView = ({
   const activeStaffCount = staff.filter(s => s.checkInStatus === 'in').length;
   
   return (
-    <div className="p-4 md:p-0 space-y-8 pb-24 h-full overflow-y-auto scrollbar-hide">
+    <div className="p-4 md:p-0 space-y-8 pb-8 h-full overflow-y-auto scrollbar-hide">
       {/* Welcome Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -2519,15 +2472,15 @@ const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose:
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9, y: 20 }}
-        className="relative bg-[var(--bg-secondary)] w-full max-w-sm rounded-[32px] overflow-hidden border border-[var(--border-color)] shadow-2xl"
+        className="relative bg-[var(--bg-secondary)] w-full max-w-md rounded-[32px] overflow-hidden border border-[var(--border-color)] shadow-2xl flex flex-col max-h-[90vh]"
       >
-        <div className="px-6 py-5 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-primary)]/50">
+        <div className="px-6 py-5 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-primary)]/50 shrink-0">
           <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-tighter">{title}</h3>
           <button onClick={onClose} className="p-1 hover:bg-[var(--bg-primary)] rounded-full transition-colors text-[var(--text-secondary)]">
             <X size={20} />
           </button>
         </div>
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto scrollbar-hide">
           {children}
         </div>
       </motion.div>
@@ -2750,80 +2703,87 @@ const InventoryView = ({
   };
 
   return (
-    <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
+    <div className="p-4 space-y-6 pb-8 h-full overflow-y-auto">
       <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap gap-3">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={16} className="absolute left-4 top-3 text-[var(--text-secondary)]" />
-            <input 
-              type="text" 
-              placeholder="FILTER ASSETS..." 
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors text-[var(--text-primary)]"
-            />
-          </div>
-          <div className="flex gap-2">
-            <select 
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors appearance-none"
-            >
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat === 'all' ? 'ALL CATEGORIES' : cat.toUpperCase()}</option>
-              ))}
-            </select>
-            <select 
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors appearance-none"
-            >
-              {statuses.map(status => (
-                <option key={status} value={status}>{status === 'all' ? 'ALL STATUS' : status.toUpperCase()}</option>
-              ))}
-            </select>
-            <button 
-              onClick={() => setIsScanning(true)}
-              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
-            >
-              <Scan size={20} />
-            </button>
-          </div>
-          {canEdit && (
-            <div className="flex gap-2">
-              <button 
-                onClick={handleExportCSV}
-                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 py-2.5 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
-                title="Export CSV"
-              >
-                <Download size={20} />
-              </button>
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 py-2.5 rounded-2xl transition-colors hover:border-brand-blue flex items-center justify-center"
-                title="Import CSV"
-              >
-                <Upload size={20} />
-              </button>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-4 top-3 text-[var(--text-secondary)]" />
               <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleImportCSV} 
-                accept=".csv" 
-                className="hidden" 
+                type="text" 
+                placeholder="FILTER ASSETS..." 
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors text-[var(--text-primary)]"
               />
-              <button 
-                onClick={() => { resetForm(); setIsModalOpen(true); }}
-                className="bg-brand-blue text-white px-4 py-2.5 rounded-2xl shadow-xl shadow-brand-blue/10 flex items-center justify-center"
-              >
-                <Plus size={20} />
-              </button>
             </div>
-          )}
+            <div className="flex gap-2">
+              <select 
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="flex-1 bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors appearance-none min-w-[140px]"
+              >
+                {categories.map(cat => (
+                  <option key={cat} value={cat}>{cat === 'all' ? 'CATEGORY' : cat.toUpperCase()}</option>
+                ))}
+              </select>
+              <select 
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="flex-1 bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest focus:outline-none focus:border-brand-blue transition-colors appearance-none min-w-[120px]"
+              >
+                {statuses.map(status => (
+                  <option key={status} value={status}>{status === 'all' ? 'STATUS' : status.toUpperCase()}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar pb-1">
+             <div className="flex gap-2 shrink-0">
+                <button 
+                  onClick={() => setIsScanning(true)}
+                  className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] p-3 rounded-2xl transition-all hover:border-brand-blue active:scale-90"
+                  title="Scan QR"
+                >
+                  <Scan size={20} />
+                </button>
+                {canEdit && (
+                  <>
+                    <button 
+                      onClick={handleExportCSV}
+                      className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] p-3 rounded-2xl transition-all hover:border-brand-blue active:scale-95"
+                      title="Export CSV"
+                    >
+                      <Download size={20} />
+                    </button>
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] p-3 rounded-2xl transition-all hover:border-brand-blue active:scale-95"
+                      title="Import CSV"
+                    >
+                      <Upload size={20} />
+                    </button>
+                    <input type="file" ref={fileInputRef} onChange={handleImportCSV} accept=".csv" className="hidden" />
+                  </>
+                )}
+             </div>
+
+             {canEdit && (
+               <button 
+                 onClick={() => { resetForm(); setIsModalOpen(true); }}
+                 className="flex-1 sm:flex-none sm:min-w-[140px] bg-brand-blue text-white px-5 py-3 rounded-2xl shadow-lg shadow-brand-blue/20 flex items-center justify-center gap-2 font-black text-[10px] uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all whitespace-nowrap"
+               >
+                 <Plus size={18} />
+                 <span>Add Asset</span>
+               </button>
+             )}
+          </div>
         </div>
       </div>
 
-<AnimatePresence>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <AnimatePresence mode="popLayout">
           {filteredEquipment.length > 0 ? filteredEquipment.map(item => (
             <motion.div 
               key={item.id}
@@ -2832,49 +2792,51 @@ const InventoryView = ({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               onClick={() => setSelectedEquipment(item)}
-              className="bg-[var(--bg-secondary)] p-4 rounded-3xl border border-[var(--border-color)] flex items-center justify-between cursor-pointer hover:border-brand-blue transition-colors"
+              className="bg-[var(--bg-secondary)] p-5 rounded-3xl border border-[var(--border-color)] flex flex-col gap-4 cursor-pointer hover:border-brand-blue transition-all group/card shadow-sm hover:shadow-md"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-[var(--bg-primary)] flex items-center justify-center text-brand-blue border border-[var(--border-color)] shadow-inner overflow-hidden">
-                    <img 
-                      src={item.imageUrl || `https://picsum.photos/seed/${item.id}/100/100`} 
-                      alt={item.name} 
-                      referrerPolicy="no-referrer" 
-                      className="w-full h-full object-cover" 
-                    />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-tight">{item.name}</h3>
-                    <p className="text-[9px] text-[var(--text-secondary)] font-black uppercase tracking-widest">{item.category}{item.subCategory ? ` / ${item.subCategory}` : ''}</p>
-                  </div>
+              <div className="flex items-start gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-[var(--bg-primary)] flex items-center justify-center text-brand-blue border border-[var(--border-color)] shadow-inner overflow-hidden shrink-0">
+                  <img 
+                    src={item.imageUrl || `https://picsum.photos/seed/${item.id}/100/100`} 
+                    alt={item.name} 
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover transition-transform group-hover/card:scale-110" 
+                  />
                 </div>
-                <div className={cn(
-                  "px-2 py-1 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] text-[9px] font-black uppercase tracking-widest",
-                  item.status === 'Available' ? "text-brand-green" : 
-                  item.status === 'In Use' ? "text-brand-blue" : "text-brand-orange"
-                )}>
-                  {item.status}
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-tight leading-tight">{item.name}</h3>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <span className={cn(
+                      "px-2 py-0.5 rounded-full border text-[7px] font-black uppercase tracking-[0.12em] flex items-center gap-1 shadow-sm",
+                      item.status === 'Available' ? "bg-brand-green/10 text-brand-green border-brand-green/30" : 
+                      item.status === 'In Use' ? "bg-brand-blue/10 text-brand-blue border-brand-blue/30" : "bg-brand-orange/10 text-brand-orange border-brand-orange/30"
+                    )}>
+                      <span className="w-1 h-1 rounded-full bg-current" />
+                      {item.status.toUpperCase()}
+                    </span>
+                    <span className="text-[10px] text-[var(--text-secondary)] font-black uppercase tracking-widest leading-none">{item.category}</span>
+                  </div>
+                  {item.subCategory && (
+                    <p className="text-[8px] text-brand-blue font-bold uppercase tracking-wider mt-1">{item.subCategory}</p>
+                  )}
                 </div>
               </div>
 
-
-
-              <div className="pt-4 border-t border-[var(--border-color)]/50 flex justify-between items-center">
-                <button className="text-[10px] font-black text-brand-blue uppercase tracking-widest flex items-center gap-1.5 group">
-                  FLIGHT LOGS <ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
+              <div className="pt-4 border-t border-[var(--border-color)]/50 flex justify-between items-center mt-auto">
+                <button className="text-[10px] font-black text-brand-blue uppercase tracking-[0.2em] flex items-center gap-1.5 group/btn">
+                  LOGS <ChevronRight size={12} className="group-hover/btn:translate-x-1 transition-transform" />
                 </button>
                 {canEdit && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-1">
                     <button 
-                      onClick={() => handleEdit(item)}
-                      className="p-2 text-[var(--text-secondary)] hover:text-brand-blue transition-colors"
+                      onClick={(e) => { e.stopPropagation(); handleEdit(item); }}
+                      className="p-2 text-[var(--text-secondary)] hover:text-brand-blue hover:bg-brand-blue/5 rounded-xl transition-all"
                     >
                       <Edit3 size={16} />
                     </button>
                     <button 
-                      onClick={() => onDelete(item.id)}
-                      className="p-2 text-[var(--text-secondary)] hover:text-red-500 transition-colors"
+                      onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+                      className="p-2 text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -2883,12 +2845,13 @@ const InventoryView = ({
               </div>
             </motion.div>
           )) : (
-            <div className="text-center py-20 bg-[var(--bg-secondary)] rounded-3xl border border-dashed border-[var(--border-color)]">
+            <div className="col-span-full text-center py-20 bg-[var(--bg-secondary)] rounded-3xl border border-dashed border-[var(--border-color)]">
               <Warehouse size={40} className="mx-auto text-[var(--text-secondary)] opacity-20 mb-4" />
               <p className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-[0.2em]">Zero Assets Detected</p>
             </div>
           )}
         </AnimatePresence>
+      </div>
       <Modal 
         isOpen={!!selectedEquipment}
         onClose={() => setSelectedEquipment(null)}
@@ -3045,7 +3008,7 @@ const InventoryView = ({
             <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Asset Name</label>
             <input 
               required
-              value={formData.name}
+              value={formData.name || ''}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
               className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue"
               placeholder="e.g. Excavator Model X"
@@ -3101,7 +3064,7 @@ const InventoryView = ({
               <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Serial</label>
               <input 
                 required
-                value={formData.serialNumber}
+                value={formData.serialNumber || ''}
                 onChange={(e) => setFormData({...formData, serialNumber: e.target.value})}
                 className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue font-mono"
                 placeholder="SN-0000"
@@ -3111,7 +3074,7 @@ const InventoryView = ({
           <div className="space-y-1.5">
             <label className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest ml-1">Status</label>
             <select 
-              value={formData.status}
+              value={formData.status || 'Available'}
               onChange={(e) => setFormData({...formData, status: e.target.value as any})}
               className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-blue appearance-none"
             >
@@ -3174,6 +3137,7 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
   }, [initialUser]);
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('pulse_active_tab') || 'dashboard');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('pulse_theme') as 'light' | 'dark') || 'dark');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   
   const [equipment, setEquipment] = useState<Equipment[]>([]);
@@ -3414,10 +3378,11 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
       <Sidebar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
-        role={user.role} 
+        user={user} 
         onLogout={onLogout || (() => {})} 
         settings={settings}
-        userEmail={user.email}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
       />
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
@@ -3439,9 +3404,10 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
             }
           }}
           onNotificationClick={handleNotificationClick}
+          onMenuClick={() => setIsSidebarOpen(true)}
         />
         
-        <main className="flex-1 overflow-y-auto overflow-x-hidden md:px-8 pb-32 md:pb-8">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden md:px-8 pb-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -3510,14 +3476,21 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
                   onUpdateStaff={async (s) => {
                     try {
                       const { id, ...data } = s;
-                      const { role, email, ...updatable } = data;
+                      const { email, ...updatable } = data;
                       const updateData = cleanData({
                         ...updatable,
                         avatar_url: updatable.imageUrl || '',
                         imageUrl: updatable.imageUrl || '',
                         updatedAt: serverTimestamp()
                       });
+                      
                       await updateDoc(doc(db, 'profiles', id), updateData);
+                      
+                      // Explicitly sync current user state if they updated themselves
+                      if (id === user.id) {
+                        setUser(prev => ({ ...prev, ...updateData }));
+                      }
+                      
                       console.log(`Staff ${id} updated successfully`);
                     } catch (err) {
                       handleFirestoreError(err, OperationType.UPDATE, `profiles/${s.id}`);
@@ -3826,14 +3799,6 @@ export default function App({ initialUser, onLogout }: { initialUser?: User, onL
             </motion.div>
           </AnimatePresence>
         </main>
-
-        <BottomNav 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab} 
-          role={user.role} 
-          settings={settings}
-          userEmail={user.email}
-        />
       </div>
     </div>
   );

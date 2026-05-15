@@ -96,7 +96,7 @@ export const CalendarView: React.FC<Props> = ({ projects, leaveRequests, assignm
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-6 pb-24 h-full overflow-y-auto">
+    <div className="p-4 md:p-6 space-y-6 pb-8 h-full overflow-y-auto">
       <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-6">
         <div>
           <h2 className="text-2xl font-black text-[var(--text-primary)] uppercase tracking-tight">{format(currentMonth, 'MMMM yyyy')}</h2>

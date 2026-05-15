@@ -134,7 +134,6 @@ export interface Project {
     mapLink?: string;
   };
   status: 'planning' | 'active' | 'completed' | 'on-hold';
-  description: string;
   startDate: string;
   endDate: string;
   eventDates: ProjectEventDate[];

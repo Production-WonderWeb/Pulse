@@ -92,7 +92,7 @@ export const AdminSettingsView: React.FC<Props> = ({ config, onUpdateConfig, bra
   };
 
   return (
-    <div className="p-6 space-y-12 pb-24 h-full overflow-y-auto">
+    <div className="p-6 space-y-12 pb-8 h-full overflow-y-auto">
       <div className="space-y-6">
         <div className="flex items-center gap-3 mb-2">
           <div className="p-2 bg-brand-blue/10 rounded-xl text-brand-blue border border-brand-blue/20">

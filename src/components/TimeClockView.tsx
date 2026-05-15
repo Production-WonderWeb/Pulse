@@ -417,7 +417,7 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], currentUserEm
   const isViewingSelf = targetUser.id === user.id;
 
   return (
-    <div className="p-4 space-y-6 pb-24 h-full overflow-y-auto">
+    <div className="p-4 space-y-6 pb-8 h-full overflow-y-auto">
       {/* Admin View Selector */}
       {isAdminView && (
         <div className="bg-[var(--bg-secondary)] p-3 rounded-2xl border border-brand-blue/30 flex items-center gap-3">
@@ -949,7 +949,7 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], currentUserEm
                       <div className="col-span-2 space-y-1">
                         <label className="text-[8px] font-black uppercase tracking-widest text-[var(--text-secondary)]">Type</label>
                         <select 
-                          value={editingLeaveForm.type} 
+                          value={editingLeaveForm.type || LeaveType.ANNUAL} 
                           onChange={(e) => setEditingLeaveForm({...editingLeaveForm, type: e.target.value as LeaveType})}
                           className="w-full bg-[var(--bg-primary)] p-2 rounded-lg text-xs font-black border border-[var(--border-color)]"
                         >
@@ -958,15 +958,15 @@ export const TimeClockView: React.FC<Props> = ({ user, users = [], currentUserEm
                       </div>
                       <div className="space-y-1">
                         <label className="text-[8px] font-black uppercase tracking-widest text-[var(--text-secondary)]">Start Date</label>
-                        <input type="date" value={editingLeaveForm.startDate} onChange={(e) => setEditingLeaveForm({...editingLeaveForm, startDate: e.target.value})} className="w-full bg-[var(--bg-primary)] p-2 rounded-lg text-xs border border-[var(--border-color)]" />
+                        <input type="date" value={editingLeaveForm.startDate || ''} onChange={(e) => setEditingLeaveForm({...editingLeaveForm, startDate: e.target.value})} className="w-full bg-[var(--bg-primary)] p-2 rounded-lg text-xs border border-[var(--border-color)]" />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[8px] font-black uppercase tracking-widest text-[var(--text-secondary)]">End Date</label>
-                        <input type="date" value={editingLeaveForm.endDate} onChange={(e) => setEditingLeaveForm({...editingLeaveForm, endDate: e.target.value})} className="w-full bg-[var(--bg-primary)] p-2 rounded-lg text-xs border border-[var(--border-color)]" />
+                        <input type="date" value={editingLeaveForm.endDate || ''} onChange={(e) => setEditingLeaveForm({...editingLeaveForm, endDate: e.target.value})} className="w-full bg-[var(--bg-primary)] p-2 rounded-lg text-xs border border-[var(--border-color)]" />
                       </div>
                       <div className="col-span-2 space-y-1">
                         <label className="text-[8px] font-black uppercase tracking-widest text-[var(--text-secondary)]">Reason</label>
-                        <textarea value={editingLeaveForm.reason} onChange={(e) => setEditingLeaveForm({...editingLeaveForm, reason: e.target.value})} className="w-full bg-[var(--bg-primary)] p-2 rounded-lg text-xs border border-[var(--border-color)] h-20" />
+                        <textarea value={editingLeaveForm.reason || ''} onChange={(e) => setEditingLeaveForm({...editingLeaveForm, reason: e.target.value})} className="w-full bg-[var(--bg-primary)] p-2 rounded-lg text-xs border border-[var(--border-color)] h-20" />
                       </div>
                     </div>
                   </div>

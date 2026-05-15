@@ -4,6 +4,7 @@ import { db } from '../lib/firebase';
 import { User } from '../types/index';
 import { motion } from 'motion/react';
 import { Phone, MapPin, User as UserIcon, MessageSquare, AlertCircle } from 'lucide-react';
+import { ImageUpload } from './ImageUpload';
 
 interface OnboardingFormProps {
   user: User;
@@ -20,7 +21,8 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ user, onComplete
     emergencyContact: '',
     emergencyContactName: '',
     emergencyContactRelation: '',
-    whatsappIsDifferent: false
+    whatsappIsDifferent: false,
+    imageUrl: user.imageUrl || ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -37,6 +39,8 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ user, onComplete
         emergencyContact: formData.emergencyContact,
         emergencyContactName: formData.emergencyContactName,
         emergencyContactRelation: formData.emergencyContactRelation,
+        imageUrl: formData.imageUrl,
+        avatar_url: formData.imageUrl,
         isOnboarded: true
       };
 
@@ -77,6 +81,16 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ user, onComplete
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="flex flex-col items-center mb-6">
+              <ImageUpload
+                label="Profile Picture"
+                value={formData.imageUrl}
+                onChange={(val) => setFormData({...formData, imageUrl: val})}
+                aspectRatio="square"
+                className="w-32 h-32"
+              />
+            </div>
+            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Name & Email (Pre-filled) */}
               <div className="space-y-1.5">

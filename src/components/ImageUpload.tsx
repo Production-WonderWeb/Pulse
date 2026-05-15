@@ -72,8 +72,8 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(img, 0, 0, width, height);
-            // Use PNG to support transparency in logos
-            const dataUrl = canvas.toDataURL('image/png'); 
+            // Use JPEG for better compression to stay within Firestore limits
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.7); 
             onChange(dataUrl);
           }
         } catch (err) {
